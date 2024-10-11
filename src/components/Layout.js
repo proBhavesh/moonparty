@@ -13,7 +13,7 @@ const Layout = ({ children }) => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className="min-h-screen bg-gray-100">
-        {/* <Navbar /> */}
+        <Navbar />
         <main className="container mx-auto px-4 py-8">{children}</main>
       </div>
     </>
