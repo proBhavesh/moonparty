@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { useWalletConnection } from "../context/WalletConnectionProvider";
 import Image from "next/image";
+import { useRouter } from "next/router";
+import { removeAuthCookie } from "../lib/authCookies";
 
 const UserProfile = ({ onClose }) => {
-  const { user } = useWalletConnection();
+  const router = useRouter();
+  const { user, logout } = useWalletConnection();
   const [leaderboards, setLeaderboards] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,6 +33,18 @@ const UserProfile = ({ onClose }) => {
 
     fetchLeaderboards();
   }, [user]);
+
+  const handleGroupClick = (groupId) => {
+    router.push(`/group/${groupId}`);
+    onClose();
+  };
+
+  const handleLogout = () => {
+    removeAuthCookie();
+    logout();
+    onClose();
+    router.push("/");
+  };
 
   if (!user) {
     return null; // Or some loading state
@@ -59,6 +74,12 @@ const UserProfile = ({ onClose }) => {
             <p className="text-sm text-gray-300">{user.wallet_address}</p>
           </div>
         </div>
+        <button
+          onClick={handleLogout}
+          className="w-full bg-red-500 text-white py-2 px-4 rounded mb-4 hover:bg-red-600 transition-colors duration-200"
+        >
+          Logout
+        </button>
         <h3 className="text-xl font-semibold mb-2 text-white">
           Your Leaderboards
         </h3>
@@ -67,7 +88,11 @@ const UserProfile = ({ onClose }) => {
         ) : leaderboards.length > 0 ? (
           <ul className="space-y-2">
             {leaderboards.map((board) => (
-              <li key={board.id} className="bg-purple-700 rounded p-3">
+              <li
+                key={board.id}
+                className="bg-purple-700 rounded p-3 cursor-pointer hover:bg-purple-600 transition-colors duration-200"
+                onClick={() => handleGroupClick(board.id)}
+              >
                 <p className="text-lg font-semibold text-white">{board.name}</p>
                 <p className="text-sm text-gray-300">Rank: {board.rank}</p>
                 <p className="text-sm text-gray-300">

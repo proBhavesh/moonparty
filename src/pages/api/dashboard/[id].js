@@ -22,40 +22,37 @@ export default async function handler(req, res) {
     }
 
     const { data: groupsData, error: groupsError } = await supabase
-      .from("group_members")
+      .from("leaderboard_groups")
       .select(
         `
-        group_id,
-        leaderboard_groups (
-          id,
-          name,
-          created_by,
-          invite_link,
-          group_members (
-            users (
-              wallet_address,
-              username
-            )
+        id,
+        name,
+        created_by,
+        invite_link,
+        group_members (
+          users (
+            wallet_address,
+            username
           )
         )
       `
       )
-      .eq("user_id", userData.id);
+      .eq("created_by", userData.id);
 
     if (groupsError) {
       throw groupsError;
     }
 
     const formattedGroups = groupsData.map((group) => ({
-      ...group.leaderboard_groups,
-      group_members: group.leaderboard_groups.group_members,
-      members_count: group.leaderboard_groups.group_members.length,
+      ...group,
+      members_count: group.group_members.length,
     }));
 
     res.status(200).json(formattedGroups);
   } catch (error) {
+    console.error("Error fetching created groups:", error);
     res
       .status(500)
-      .json({ message: "Error fetching group details", error: error.message });
+      .json({ message: "Error fetching created groups", error: error.message });
   }
 }

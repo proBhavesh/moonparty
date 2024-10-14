@@ -1,29 +1,44 @@
-import { useEffect, useLayoutEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { useWalletConnection } from "../context/WalletConnectionProvider";
-
 import CreateBtn from "@/components/ui/CreateBtn";
 import PartyCard from "@/components/ui/PartyCard";
 
 export default function Dashboard() {
-  const { isAuthenticated, publicKey } = useWalletConnection();
+  const router = useRouter();
+  const { isAuthenticated, publicKey, checkAndSetAuthState } =
+    useWalletConnection();
   const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (isAuthenticated && publicKey) {
-      fetchUserGroups();
-    }
-  }, [isAuthenticated, publicKey]);
+    const initDashboard = async () => {
+      const authState = await checkAndSetAuthState();
+      if (authState.isAuthenticated && authState.publicKey) {
+        fetchUserGroups(authState.publicKey);
+      } else {
+        setLoading(false);
+      }
+    };
 
-  const fetchUserGroups = async () => {
+    initDashboard();
+  }, [checkAndSetAuthState]);
+
+  const fetchUserGroups = async (walletPublicKey) => {
     try {
-      const response = await fetch(`/api/dashboard/${publicKey}`);
+      const response = await fetch(`/api/dashboard/${walletPublicKey}`);
       const data = await response.json();
       setGroups(data);
     } catch (error) {
       console.error("Error fetching user groups:", error);
+    } finally {
+      setLoading(false);
     }
   };
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
 
   if (!isAuthenticated) {
     return <div>Please connect your wallet to view the dashboard.</div>;
@@ -41,7 +56,7 @@ export default function Dashboard() {
           ))}
         </ul>
       ) : (
-        <p>You have not joined any groups yet.</p>
+        <p>You have not created any parties yet.</p>
       )}
 
       <div className="mt-5">

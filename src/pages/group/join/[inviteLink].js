@@ -18,13 +18,18 @@ export default function JoinGroup() {
   }, [router]);
 
   useEffect(() => {
-    if (isAuthenticated && inviteLink) {
+    if (isAuthenticated && inviteLink && publicKey) {
       joinGroup();
     }
-  }, [isAuthenticated, inviteLink]);
+  }, [isAuthenticated, inviteLink, publicKey]);
 
   const joinGroup = async () => {
     if (joining) return;
+    if (!inviteLink || !publicKey) {
+      setError("Missing invite link or wallet connection. Please try again.");
+      return;
+    }
+
     setJoining(true);
     setError(null);
 
@@ -49,6 +54,10 @@ export default function JoinGroup() {
         throw new Error(data.message || "Failed to join group");
       }
 
+      if (!data.member || !data.member.group_id) {
+        throw new Error("Invalid response from server");
+      }
+
       router.push(`/group/${data.member.group_id}`);
     } catch (err) {
       setError(err.message);
@@ -58,7 +67,18 @@ export default function JoinGroup() {
   };
 
   if (!isAuthenticated) {
-    return <div>Please connect your wallet to join the group.</div>;
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div
+          className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
+          <span className="block sm:inline">
+            Please connect your wallet to join the group.
+          </span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -78,6 +98,7 @@ export default function JoinGroup() {
         <button
           onClick={joinGroup}
           className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+          disabled={!inviteLink || !publicKey}
         >
           Join Group
         </button>
