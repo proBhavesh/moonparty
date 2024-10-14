@@ -1,8 +1,9 @@
-import { useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import { useWalletConnection } from "../context/WalletConnectionProvider";
-import WalletConnectButton from "./WalletConnectButton";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import WalletConnectButton from "./WalletConnectButton";
+import { useWalletConnection } from "../context/WalletConnectionProvider";
 
 const Navbar = () => {
 	const { isAuthenticated, logout } = useWalletConnection();
@@ -13,7 +14,7 @@ const Navbar = () => {
 	return (
 		<nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">
 			<div className="flex items-center justify-start grow shrink basis-0 h-9">
-				<div className="text-2xl text-center text-white">MoonParty</div>
+				<Link href="/" className="text-2xl text-center text-white">MoonParty</Link>
 				<ChevronDown className="text-white" size={30} />
 			</div>
 			<button onClick={toggleDropdown} className="focus:outline-none">
