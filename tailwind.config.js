@@ -14,6 +14,7 @@ module.exports = {
 				"primary-pink": "#FF0057",
 			},
 			fontFamily: {
+				sans: ["Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
 				"reem-kufi-fun": ["Reem Kufi Fun", "sans-serif"],
 			},
 		},
