@@ -1,9 +1,9 @@
-import { useState } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import { useWalletConnection } from "../context/WalletConnectionProvider";
-import WalletConnectButton from "./WalletConnectButton";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import UserProfile from "./UserProfile";
+import WalletConnectButton from "./WalletConnectButton";
 
 const Navbar = () => {
   const { isAuthenticated, logout } = useWalletConnection();
