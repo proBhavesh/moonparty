@@ -1,4 +1,5 @@
 import { supabase } from "../../../lib/supabase";
+import { updateDailyPnL } from "../../../lib/updateDailyPnL";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -58,6 +59,9 @@ export default async function handler(req, res) {
       .single();
 
     if (addMemberError) throw addMemberError;
+
+    // Update P&L for the new user
+    await updateDailyPnL(userId);
 
     res
       .status(200)

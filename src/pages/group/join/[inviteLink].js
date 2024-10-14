@@ -28,6 +28,9 @@ export default function JoinGroup() {
     setJoining(true);
     setError(null);
 
+    console.log("inviteLink", inviteLink);
+    console.log("userWallet", publicKey);
+
     try {
       const response = await fetch("/api/groups/join", {
         method: "POST",

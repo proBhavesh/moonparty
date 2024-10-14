@@ -24,13 +24,23 @@ async function getWalletBalance(walletAddress) {
   }
 }
 
-export async function updateDailyPnL() {
+export async function updateDailyPnL(specificUserId = null) {
   try {
-    const { data: users, error: userError } = await supabase
-      .from("users")
-      .select("id, wallet_address");
-
-    if (userError) throw userError;
+    let users;
+    if (specificUserId) {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, wallet_address")
+        .eq("id", specificUserId);
+      if (error) throw error;
+      users = data;
+    } else {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, wallet_address");
+      if (error) throw error;
+      users = data;
+    }
 
     const today = new Date().toISOString().split("T")[0];
 
@@ -108,24 +118,27 @@ export async function updateDailyPnL() {
       }
     }
 
-    // Update ranks for each group
-    const { data: groups } = await supabase
-      .from("leaderboard_groups")
-      .select("id");
+    // Only update ranks if we're updating all users
+    if (!specificUserId) {
+      // Update ranks for each group
+      const { data: groups } = await supabase
+        .from("leaderboard_groups")
+        .select("id");
 
-    for (const { id: group_id } of groups) {
-      const { data: groupRankings } = await supabase
-        .from("daily_rankings")
-        .select("id, daily_change_percentage")
-        .eq("group_id", group_id)
-        .eq("ranking_date", today)
-        .order("daily_change_percentage", { ascending: false });
-
-      for (let i = 0; i < groupRankings.length; i++) {
-        await supabase
+      for (const { id: group_id } of groups) {
+        const { data: groupRankings } = await supabase
           .from("daily_rankings")
-          .update({ rank: i + 1 })
-          .eq("id", groupRankings[i].id);
+          .select("id, daily_change_percentage")
+          .eq("group_id", group_id)
+          .eq("ranking_date", today)
+          .order("daily_change_percentage", { ascending: false });
+
+        for (let i = 0; i < groupRankings.length; i++) {
+          await supabase
+            .from("daily_rankings")
+            .update({ rank: i + 1 })
+            .eq("id", groupRankings[i].id);
+        }
       }
     }
 

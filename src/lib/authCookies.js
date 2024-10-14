@@ -3,7 +3,7 @@ import Cookies from "js-cookie";
 const AUTH_COOKIE_NAME = "moonparty_auth";
 
 export const setAuthCookie = (user) => {
-  Cookies.set(AUTH_COOKIE_NAME, JSON.stringify(user), { expires: 7 }); // Expires in 7 days
+  Cookies.set(AUTH_COOKIE_NAME, JSON.stringify(user), { expires: 7 });
 };
 
 export const getAuthCookie = () => {
