@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { generateInviteLink } from "../lib/utils";
 
-const GroupInviteLink = ({ groupId }) => {
+const GroupInviteLink = ({ inviteLink }) => {
   const [copied, setCopied] = useState(false);
-  const inviteLink = generateInviteLink(groupId);
+  const fullInviteLink = generateInviteLink(inviteLink);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(inviteLink);
+    navigator.clipboard.writeText(fullInviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -18,7 +18,7 @@ const GroupInviteLink = ({ groupId }) => {
         <input
           type="text"
           readOnly
-          value={inviteLink}
+          value={fullInviteLink}
           className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-l-md text-sm border-gray-300 focus:ring-purple-500 focus:border-purple-500"
         />
         <button
