@@ -45,27 +45,24 @@ export default function GroupDetails() {
 	}
 
 	return (
-		<>
-			<div>
-				<TopUsers members={group.group_members} />
-				{/* <LeaderboardTable groupId={id} /> */}
-				{/* <AssetSnapshot groupId={id} onSnapshotTaken={fetchGroupDetails} /> */}
+		<div className="flex flex-col items-center mt-10 space-y-4">
+			<TopUsers members={group.group_members} />
+			{/* <LeaderboardTable groupId={id} /> */}
+			{/* <AssetSnapshot groupId={id} onSnapshotTaken={fetchGroupDetails} /> */}
 
-				{/* members */}
-				<div className="flex flex-col items-center justify-center mt-10 space-y-2 overflow-x-auto">
-					{group.group_members.map((member, index) => (
-						<UserCard
-							key={member.users.wallet_address}
-							id={index + 1}
-							name={member.users.username || "Anonymous"}
-							count={0}
-						/>
-					))}
-					{console.log(group.group_members)}
-				</div>
-
-				<GroupInviteLink inviteLink={group.invite_link} />
+			{/* members */}
+			<div className="space-y-2 overflow-x-auto">
+				{group.group_members.map((member, index) => (
+					<UserCard
+						key={member.users.wallet_address}
+						id={index + 1}
+						name={member.users.username || "Anonymous"}
+						count={0}
+					/>
+				))}
 			</div>
-		</>
+
+			<GroupInviteLink inviteLink={group.invite_link} />
+		</div>
 	);
 }
