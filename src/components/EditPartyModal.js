@@ -76,7 +76,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full md:w-1/2 md:max-w-[500px] m-5 overflow-y-auto p-5">
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
 				<button onClick={onClose} className="flex justify-end w-full">
 					<X
 						size={32}

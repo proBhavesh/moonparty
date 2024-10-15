@@ -2,7 +2,7 @@ import Image from "next/image";
 
 function UserCard({ id, src, name, count }) {
 	return (
-		<div className="flex items-center justify-between w-screen max-w-md p-4 text-white bg-dark-blue rounded-3xl md:max-w-lg">
+		<div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-lg">
 			<div className="flex items-center gap-3.5">
 				<span className="text-xl text-center text-white/60">{id}</span>
 				<Image

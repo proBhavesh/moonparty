@@ -12,7 +12,7 @@ const GroupInviteLink = ({ inviteLink }) => {
 	};
 
 	return (
-		<div className="flex justify-between w-screen max-w-md md:max-w-lg border border-dashed border-white/60 rounded-3xl gap-3.5 p-4">
+		<div className="flex justify-between w-screen max-w-xs sm:max-w-lg border border-dashed border-white/60 rounded-3xl gap-3.5 p-4">
 			<input
 				type="text"
 				readOnly

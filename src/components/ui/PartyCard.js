@@ -8,7 +8,7 @@ function PartyCard({ group }) {
 
 	return (
 		<>
-			<div className="text-white bg-dark-blue gap-3.5 p-3.5 rounded-3xl justify-between items-center flex hover:bg-primary-pink duration-300 md:max-w-lg w-screen max-w-md">
+			<div className="flex items-center justify-between w-screen max-w-xs p-4 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink">
 				<Link href={`/group/${group.id}`}>
 					<div className="flex flex-col justify-center">
 						<span className="text-xl">{group.name}</span>
@@ -37,3 +37,6 @@ function PartyCard({ group }) {
 }
 
 export default PartyCard;
+
+
+//   md:max-w-lg w-screen max-w-md

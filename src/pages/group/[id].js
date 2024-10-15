@@ -5,7 +5,7 @@ import LeaderboardTable from "../../components/LeaderboardTable";
 import GroupInviteLink from "../../components/GroupInviteLink";
 import AssetSnapshot from "../../components/AssetSnapshot";
 import TopUsers from "@/components/TopUsers";
-import UserCard from "@/components/ui/UserCard";
+import MembersList from "@/components/MembersList";
 
 export default function GroupDetails() {
 	const router = useRouter();
@@ -51,16 +51,10 @@ export default function GroupDetails() {
 			{/* <AssetSnapshot groupId={id} onSnapshotTaken={fetchGroupDetails} /> */}
 
 			{/* members */}
-			<div className="space-y-2 overflow-x-auto">
-				{group.group_members.map((member, index) => (
-					<UserCard
-						key={member.users.wallet_address}
-						id={index + 1}
-						name={member.users.username || "Anonymous"}
-						count={0}
-					/>
-				))}
-			</div>
+			<MembersList
+				members={group.group_members}
+				handleGroupClick={() => {}}
+			/>
 
 			<GroupInviteLink inviteLink={group.invite_link} />
 		</div>

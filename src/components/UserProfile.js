@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import { removeAuthCookie } from "../lib/authCookies";
 import { X } from "lucide-react";
+import MembersList from "./MembersList";
 
 const UserProfile = ({ onClose }) => {
 	const router = useRouter();
@@ -53,8 +54,8 @@ const UserProfile = ({ onClose }) => {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full md:w-1/2 md:max-w-[500px] m-5 flex flex-col">
-				<div className="flex-grow p-5 overflow-y-auto">
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar">
+				<div className="flex-grow px-1 py-2 overflow-y-auto sm:p-5">
 					<button
 						onClick={onClose}
 						className="flex justify-end w-full"
@@ -66,7 +67,7 @@ const UserProfile = ({ onClose }) => {
 					</button>
 
 					{/* profile pic, username & wallet address */}
-					<div className="flex flex-col items-center gap-2 mb-4 -mt-8">
+					<div className="flex flex-col items-center gap-2 mb-4 -mt-5">
 						<Image
 							src="/sample-img.png"
 							alt="User Avatar"
@@ -78,9 +79,6 @@ const UserProfile = ({ onClose }) => {
 							<p className="text-xl text-white">
 								{user.username || "Anonymous"}
 							</p>
-							<p className="text-sm text-white/60">
-								{user.wallet_address}
-							</p>
 						</div>
 					</div>
 
@@ -90,29 +88,10 @@ const UserProfile = ({ onClose }) => {
 							Loading leaderboards...
 						</p>
 					) : leaderboards.length > 0 ? (
-						<ul className="space-y-2">
-							{leaderboards.map((board) => (
-								<li
-									key={board.id}
-									className="flex items-center justify-between px-4 py-5 rounded-3xl bg-dark-blue"
-									onClick={() => handleGroupClick(board.id)}
-								>
-									<p className="text-lg font-normal text-white">
-										{board.name}
-									</p>
-									{/* <p className="text-sm text-gray-300">
-										Rank: {board.rank}
-									</p> */}
-									<p className="px-3 py-2 text-sm text-white rounded-full bg-primary-blue">
-										+{" "}
-										{board.daily_change_percentage.toFixed(
-											2
-										)}
-										%
-									</p>
-								</li>
-							))}
-						</ul>
+						<MembersList
+							members={leaderboards}
+							handleGroupClick={handleGroupClick}
+						/>
 					) : (
 						<p className="text-center text-white">
 							You are not part of any leaderboards yet!

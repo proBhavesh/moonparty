@@ -37,29 +37,35 @@ export default function Dashboard() {
 	};
 
 	if (loading) {
-		return <div>Loading...</div>;
+		return <div className="text-sm text-center text-white">Loading...</div>;
 	}
 
 	if (!isAuthenticated) {
-		return <div>Please connect your wallet to view the dashboard.</div>;
+		return (
+			<div className="text-sm text-center text-white">
+				Please connect your wallet to view the dashboard.
+			</div>
+		);
 	}
 
 	return (
-		<div className="flex flex-col items-center mt-10 space-y-4 text-white ">
-			<h1 className="text-3xl">My Parties</h1>
-			{groups.length > 0 ? (
-				<ul className="flex flex-col items-center space-y-4">
-					{groups.map((group) => (
-						<li key={group.id}>
-							<PartyCard group={group} />
-						</li>
-					))}
-				</ul>
-			) : (
-				<p>You have not created any parties yet.</p>
-			)}
+		<div className="flex flex-col items-center space-y-4 text-white h-[85vh] sm:h-[88vh] justify-between">
+			<div>
+				<h1 className="mb-3 text-2xl text-center">My Parties</h1>
+				{groups.length > 0 ? (
+					<ul className="flex flex-col items-center space-y-2">
+						{groups.map((group) => (
+							<li key={group.id}>
+								<PartyCard group={group} />
+							</li>
+						))}
+					</ul>
+				) : (
+					<p>You have not created any parties yet.</p>
+				)}
+			</div>
 
-			<div className="mt-5">
+			<div>
 				<CreateBtn link={"/create-group"} text={"Create New Party"} />
 			</div>
 		</div>
