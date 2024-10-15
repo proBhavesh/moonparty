@@ -11,7 +11,7 @@ function UserCard({ id, src, name, count }) {
 					width={40}
 					height={40}
 					alt="User Avatar"
-					src={src}
+					src={src || "/sample-img.png"}
 					className="w-12 h-12 rounded-full"
 				/>
 				<p className="text-xl">{name}</p>
