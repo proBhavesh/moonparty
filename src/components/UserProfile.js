@@ -53,65 +53,78 @@ const UserProfile = ({ onClose }) => {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-lg h-[80vh] bg-primary-blue w-full md:w-2/3 lg:w-1/3 m-10 overflow-y-auto p-4">
-				<button onClick={onClose} className="flex justify-end w-full">
-					<X className="text-white" />
-				</button>
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full md:w-1/2 md:max-w-[500px] m-5 flex flex-col">
+				<div className="flex-grow p-5 overflow-y-auto">
+					<button
+						onClick={onClose}
+						className="flex justify-end w-full"
+					>
+						<X
+							size={32}
+							className="p-2 text-white rounded-full bg-dark-blue"
+						/>
+					</button>
 
-				<div className="flex flex-col items-center gap-2 mb-4">
-					<Image
-						src="/sample-img.png"
-						alt="User Avatar"
-						width={64}
-						height={64}
-						className="rounded-full"
-					/>
-					<div className="text-center">
-						<p className="text-xl text-white">
-							{user.username || "Anonymous"}
-						</p>
-						<p className="text-sm text-white/60">
-							{user.wallet_address}
-						</p>
+					{/* profile pic, username & wallet address */}
+					<div className="flex flex-col items-center gap-2 mb-4 -mt-8">
+						<Image
+							src="/sample-img.png"
+							alt="User Avatar"
+							width={64}
+							height={64}
+							className="rounded-full"
+						/>
+						<div className="text-center">
+							<p className="text-xl text-white">
+								{user.username || "Anonymous"}
+							</p>
+							<p className="text-sm text-white/60">
+								{user.wallet_address}
+							</p>
+						</div>
 					</div>
-					leaderboard: {leaderboards.length}
+
+					{/* leaderboards */}
+					{loading ? (
+						<p className="text-center text-white">
+							Loading leaderboards...
+						</p>
+					) : leaderboards.length > 0 ? (
+						<ul className="space-y-2">
+							{leaderboards.map((board) => (
+								<li
+									key={board.id}
+									className="flex items-center justify-between px-4 py-5 rounded-3xl bg-dark-blue"
+									onClick={() => handleGroupClick(board.id)}
+								>
+									<p className="text-lg font-normal text-white">
+										{board.name}
+									</p>
+									{/* <p className="text-sm text-gray-300">
+										Rank: {board.rank}
+									</p> */}
+									<p className="px-3 py-2 text-sm text-white rounded-full bg-primary-blue">
+										+{" "}
+										{board.daily_change_percentage.toFixed(
+											2
+										)}
+										%
+									</p>
+								</li>
+							))}
+						</ul>
+					) : (
+						<p className="text-center text-white">
+							You are not part of any leaderboards yet!
+						</p>
+					)}
 				</div>
 
-				{loading ? (
-					<p className="text-center text-white">
-						Loading leaderboards...
-					</p>
-				) : leaderboards.length > 0 ? (
-					<ul className="space-y-2">
-						{leaderboards.map((board) => (
-							<li
-								key={board.id}
-								className="p-3 transition-colors duration-200 bg-purple-700 rounded cursor-pointer hover:bg-purple-600"
-								onClick={() => handleGroupClick(board.id)}
-							>
-								<p className="text-lg font-semibold text-white">
-									{board.name}
-								</p>
-								<p className="text-sm text-gray-300">
-									Rank: {board.rank}
-								</p>
-								<p className="text-sm text-gray-300">
-									Daily Change:{" "}
-									{board.daily_change_percentage.toFixed(2)}%
-								</p>
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className="text-center text-white">
-						You are not part of any leaderboards yet!
-					</p>
-				)}
-
-				<div className="flex justify-center w-full">
+				{/* logout button */}
+				<div className="p-5">
 					<button
 						onClick={handleLogout}
-						className="w-3/4 py-3 mt-4 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
+						className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
 					>
 						Logout
 					</button>

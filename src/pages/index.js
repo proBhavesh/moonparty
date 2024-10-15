@@ -74,7 +74,7 @@ export default function Home() {
 							placeholder="Add a username..."
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
-							className="w-screen max-w-md p-4 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+							className="w-screen max-w-md py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
 						/>
 
 						<div className="relative mb-4">

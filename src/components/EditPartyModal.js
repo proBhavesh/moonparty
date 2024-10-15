@@ -76,7 +76,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-lg h-[95vh] bg-primary-blue w-full md:w-2/3 lg:w-1/3 m-5 overflow-y-auto p-5">
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full md:w-1/2 md:max-w-[500px] m-5 overflow-y-auto p-5">
 				<button onClick={onClose} className="flex justify-end w-full">
 					<X
 						size={32}
@@ -84,17 +84,71 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
 					/>
 				</button>
 
+				{/* heading */}
 				<div className="flex flex-col items-center gap-2 mb-4 -mt-8">
 					<h2 className="text-xl font-medium">Edit Party</h2>
 				</div>
-				<div className="py-5 bg-dark-blue rounded-2xl">
+
+				{/* group name */}
+				<div className="py-5 mb-4 bg-dark-blue rounded-3xl">
 					<input
 						type="text"
 						value={groupName}
 						readOnly
-						className="flex-grow w-full text-center text-white bg-transparent"
+						className="flex-grow w-full text-xl text-center text-white bg-transparent"
 					/>
 				</div>
+
+				{/* invite link */}
+				<div className="flex justify-between w-full px-3 py-4 mb-4 border border-dashed border-white/60 rounded-3xl">
+					<input
+						type="text"
+						readOnly
+						value={inviteLink}
+						className={`flex bg-transparent text-white/60 w-60 md:w-96 truncate focus:outline-none`}
+					/>
+					<button
+						onClick={copyInviteLink}
+						className="px-3 py-1 text-white rounded-full bg-primary-pink"
+					>
+						{copied ? "Copied!" : "Copy"}
+					</button>
+				</div>
+
+				{/* party members */}
+				{loading ? (
+					<p className="text-center text-white">Loading members...</p>
+				) : (
+					<ul className="space-y-2">
+						{members.map((member) => (
+							<li
+								key={member.user_id}
+								className="flex items-center justify-between px-4 py-5 rounded-3xl bg-dark-blue"
+							>
+								<div className="flex items-center">
+									<Image
+										src={member.avatar || "/sample-img.png"}
+										alt={member.username}
+										width={32}
+										height={32}
+										className="mr-2 rounded-full"
+									/>
+									<span className="text-white">
+										{member.username}
+									</span>
+								</div>
+								<button
+									onClick={() => removeMember(member.user_id)}
+								>
+									<X
+										size={32}
+										className="p-2 text-white rounded-full bg-primary-blue"
+									/>
+								</button>
+							</li>
+						))}
+					</ul>
+				)}
 			</div>
 		</div>
 		// <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">

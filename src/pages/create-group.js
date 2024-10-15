@@ -3,81 +3,79 @@ import { useWalletConnection } from "../context/WalletConnectionProvider";
 import { useRouter } from "next/router";
 
 export default function CreateGroup() {
-  const [groupName, setGroupName] = useState("");
-  const [error, setError] = useState(null);
-  const { isAuthenticated, publicKey } = useWalletConnection();
-  const router = useRouter();
+	const [groupName, setGroupName] = useState("");
+	const [error, setError] = useState(null);
+	const { isAuthenticated, publicKey } = useWalletConnection();
+	const router = useRouter();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
+	const handleSubmit = async (e) => {
+		e.preventDefault();
+		setError(null);
 
-    if (!isAuthenticated) {
-      setError("Please connect your wallet to create a group.");
-      return;
-    }
+		if (!isAuthenticated) {
+			setError("Please connect your wallet to create a group.");
+			return;
+		}
 
-    try {
-      const response = await fetch("/api/groups/create", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: groupName,
-          creatorWallet: publicKey,
-        }),
-      });
+		try {
+			const response = await fetch("/api/groups/create", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					name: groupName,
+					creatorWallet: publicKey,
+				}),
+			});
 
-      if (!response.ok) {
-        throw new Error("Failed to create group");
-      }
+			if (!response.ok) {
+				throw new Error("Failed to create group");
+			}
 
-      const data = await response.json();
-      router.push(`/group/${data.id}`);
-    } catch (error) {
-      console.error("Error creating group:", error);
-      setError("Failed to create group. Please try again.");
-    }
-  };
+			const data = await response.json();
+			router.push(`/group/${data.id}`);
+		} catch (error) {
+			console.error("Error creating group:", error);
+			setError("Failed to create group. Please try again.");
+		}
+	};
 
-  if (!isAuthenticated) {
-    return <div>Please connect your wallet to create a group.</div>;
-  }
+	if (!isAuthenticated) {
+		return <div>Please connect your wallet to create a group.</div>;
+	}
 
-  return (
-    <div className="max-w-md mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Create New Group</h1>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label
-            htmlFor="groupName"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Group Name
-          </label>
-          <div className="mt-1">
-            <input
-              type="text"
-              name="groupName"
-              id="groupName"
-              required
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              className="shadow-sm focus:ring-purple-500 focus:border-purple-500 block w-full sm:text-sm border-gray-300 rounded-md"
-            />
-          </div>
-        </div>
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <div>
-          <button
-            type="submit"
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-          >
-            Create Group
-          </button>
-        </div>
-      </form>
-    </div>
-  );
+	return (
+		<div>
+			<form
+				onSubmit={handleSubmit}
+				className="flex flex-col items-center mt-10 space-y-4"
+			>
+				<div>
+					<input
+						type="text"
+						required
+						name="groupName"
+						value={groupName}
+						placeholder="Party Name..."
+						onChange={(e) => setGroupName(e.target.value)}
+						className="w-screen max-w-md py-5 text-center text-white placeholder-purple-300 md:max-w-lg rounded-3xl bg-dark-blue"
+					/>
+				</div>
+
+				{error && <p className="text-white text-md">{error}</p>}
+
+				<div className="">
+					<button
+						type="submit"
+						className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-screen max-w-md md:max-w-lg py-5"
+					>
+						<span className="text-center text-white text-md">
+							Create New Party
+						</span>
+					</button>
+				</div>
+			</form>
+		</div>
+	);
 }
