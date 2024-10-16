@@ -20,6 +20,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global styles to hide scrollbars */
+html, body {
+  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;  /* IE and Edge */
+}
+
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, and Opera */
+}
+
 body {
   font-family: 'SF Pro', 'Helvetica', sans-serif;
 }
@@ -32,17 +42,24 @@ body {
       #FF0057);
 }
 
+/* Apply no-scrollbar to all elements */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
 @layer utilities {
-  /* Hide scrollbar for Chrome, Safari and Opera */
+  /* Keep the no-scrollbar utility for specific use if needed */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
 
-  /* Hide scrollbar for IE, Edge and Firefox */
   .no-scrollbar {
     -ms-overflow-style: none;
-    /* IE and Edge */
     scrollbar-width: none;
-    /* Firefox */
   }
 }
