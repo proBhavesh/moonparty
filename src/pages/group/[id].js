@@ -54,7 +54,6 @@ export default function GroupDetails() {
 			{/* members */}
 			<MembersList
 				members={group.group_members}
-				handleGroupClick={() => {}}
 			/>
 
 			{/* <GroupInviteLink inviteLink={group.invite_link} /> */}

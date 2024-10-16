@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import { removeAuthCookie } from "../lib/authCookies";
 import { X } from "lucide-react";
-import MembersList from "./MembersList";
+import LeaderboardList from "./LeaderboardList";
 
 const UserProfile = ({ onClose }) => {
 	const router = useRouter();
@@ -90,7 +90,7 @@ const UserProfile = ({ onClose }) => {
 							Loading leaderboards...
 						</p>
 					) : leaderboards.length > 0 ? (
-						<MembersList
+						<LeaderboardList
 							members={leaderboards}
 							handleGroupClick={handleGroupClick}
 						/>
