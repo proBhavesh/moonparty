@@ -9,6 +9,29 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Check if the user is the creator of the group
+    const { data: groupData, error: groupError } = await supabase
+      .from("leaderboard_groups")
+      .select("created_by")
+      .eq("id", groupId)
+      .single();
+
+    if (groupError) {
+      console.error("Error fetching group data:", groupError);
+      return res
+        .status(500)
+        .json({
+          message: "Error fetching group data",
+          error: groupError.message,
+        });
+    }
+
+    if (groupData.created_by === parseInt(userId)) {
+      return res
+        .status(403)
+        .json({ message: "Cannot remove the group creator" });
+    }
+
     // Remove from group_members
     const { error: groupMemberError } = await supabase
       .from("group_members")
@@ -18,12 +41,10 @@ export default async function handler(req, res) {
 
     if (groupMemberError) {
       console.error("Error removing from group_members:", groupMemberError);
-      return res
-        .status(500)
-        .json({
-          message: "Error removing from group_members",
-          error: groupMemberError.message,
-        });
+      return res.status(500).json({
+        message: "Error removing from group_members",
+        error: groupMemberError.message,
+      });
     }
 
     // Remove from daily_rankings
@@ -35,12 +56,10 @@ export default async function handler(req, res) {
 
     if (dailyRankingsError) {
       console.error("Error removing from daily_rankings:", dailyRankingsError);
-      return res
-        .status(500)
-        .json({
-          message: "Error removing from daily_rankings",
-          error: dailyRankingsError.message,
-        });
+      return res.status(500).json({
+        message: "Error removing from daily_rankings",
+        error: dailyRankingsError.message,
+      });
     }
 
     // If you need to remove from other tables, add those operations here
@@ -61,11 +80,9 @@ export default async function handler(req, res) {
       .json({ message: "Member removed successfully from all related tables" });
   } catch (error) {
     console.error("Unexpected error removing group member:", error);
-    res
-      .status(500)
-      .json({
-        message: "Unexpected error removing group member",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Unexpected error removing group member",
+      error: error.message,
+    });
   }
 }

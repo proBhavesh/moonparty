@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { removeAuthCookie } from "../lib/authCookies";
 import { X } from "lucide-react";
 import MembersList from "./MembersList";
+import Loader from "./ui/Loader";
 
 const UserProfile = ({ onClose }) => {
   const router = useRouter();
@@ -84,7 +85,9 @@ const UserProfile = ({ onClose }) => {
         {/* leaderboards */}
         <div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
           {loading ? (
-            <p className="text-center text-white">Loading leaderboards...</p>
+            <div className="flex justify-center items-center h-full">
+              <Loader />
+            </div>
           ) : leaderboards.length > 0 ? (
             <MembersList
               members={leaderboards}

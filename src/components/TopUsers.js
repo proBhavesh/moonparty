@@ -1,60 +1,63 @@
+import React from "react";
+
 function TopUsers({ members }) {
-	const usernames = ["user1", "user2", "user3"];
-	const percentages = [26.5, 82.3, 5.6];
+  // Check if members is an array and has elements
+  if (!Array.isArray(members) || members.length === 0) {
+    return <div className="text-white text-center">No members to display</div>;
+  }
 
-	return (
-		<>
-			<div className="flex items-baseline justify-center gap-5">
-				<div className="flex flex-col items-center">
-					<div className="relative">
-						<div className="flex items-center justify-center w-20 h-20 border-2 rounded-full bg-dark-blue border-[#0099ff]">
-							<div className="absolute flex items-center justify-center w-5 h-5 px-3 py-3 rounded-full bg-[#0099ff] -left-2 top-2">
-								<span className="text-base text-white">2</span>
-							</div>
-						</div>
-					</div>
-					<div className="mt-2 text-lg font-bold text-white">
-						{usernames[2]}
-					</div>
-					<div className="px-3.5 py-2 mt-2 text-base font-bold text-white bg-[#0099ff] rounded-3xl">
-						+ {percentages[2]}%
-					</div>
-				</div>
+  // Sort members by daily_change_percentage in descending order
+  const sortedMembers = [...members].sort(
+    (a, b) => b.daily_change_percentage - a.daily_change_percentage
+  );
 
-				<div className="flex flex-col items-center">
-					<div className="relative">
-						<div className="flex items-center justify-center border-2 rounded-full w-28 h-28 bg-dark-blue border-[#ffb600]">
-							<div className="absolute flex items-center justify-center w-8 h-8 px-3 py-3 bg-[#ffb600] rounded-full -left-2 top-2">
-								<span className="text-base text-white">1</span>
-							</div>
-						</div>
-					</div>
-					<div className="mt-2 text-lg font-bold text-white">
-						{usernames[0]}
-					</div>
-					<div className="px-3.5 py-2 mt-2 text-base font-bold text-white bg-[#ffb600] rounded-3xl">
-						+ {percentages[0]}%
-					</div>
-				</div>
+  // Get top 3 members or all if less than 3
+  const topThree = sortedMembers.slice(0, 3);
 
-				<div className="flex flex-col items-center">
-					<div className="relative">
-						<div className="flex items-center justify-center w-20 h-20 border-2 rounded-full bg-dark-blue border-[#ff00fa]">
-							<div className="absolute flex items-center justify-center w-5 h-5 px-3 py-3 rounded-full bg-[#ff00fa] -left-2 top-2">
-								<span className="text-base text-white">3</span>
-							</div>
-						</div>
-					</div>
-					<div className="mt-2 text-lg font-bold text-white">
-						{usernames[2]}
-					</div>
-					<div className="px-3.5 py-2 mt-2 text-base font-bold text-white bg-[#ff00fa] rounded-3xl">
-						+ {percentages[2]}%
-					</div>
-				</div>
-			</div>
-		</>
-	);
+  // Define colors and sizes for each position
+  const positions = [
+    { color: "#ffb600", size: "w-28 h-28", numberSize: "w-8 h-8" },
+    { color: "#0099ff", size: "w-20 h-20", numberSize: "w-5 h-5" },
+    { color: "#ff00fa", size: "w-20 h-20", numberSize: "w-5 h-5" },
+  ];
+
+  // Function to render each user
+  const renderUser = (user, index) => {
+    const position = positions[index];
+    return (
+      <div key={user.user_id} className="flex flex-col items-center">
+        <div className="relative">
+          <div
+            className={`flex items-center justify-center border-2 rounded-full ${position.size} bg-dark-blue`}
+            style={{ borderColor: position.color }}
+          >
+            <div
+              className={`absolute flex items-center justify-center ${position.numberSize} px-3 py-3 rounded-full -left-2 top-2`}
+              style={{ backgroundColor: position.color }}
+            >
+              <span className="text-base text-white">{index + 1}</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 text-lg font-bold text-white">
+          {user.users?.username || "Unknown User"}
+        </div>
+        <div
+          className="px-3.5 py-2 mt-2 text-base font-bold text-white rounded-3xl"
+          style={{ backgroundColor: position.color }}
+        >
+          {user.daily_change_percentage >= 0 ? "+" : "-"}{" "}
+          {Math.abs(user.daily_change_percentage).toFixed(2)}%
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-baseline justify-center gap-5">
+      {topThree.map((user, index) => renderUser(user, index))}
+    </div>
+  );
 }
 
 export default TopUsers;

@@ -4,6 +4,7 @@ import { useWalletConnection } from "../context/WalletConnectionProvider";
 import { useWalletAuth } from "../hooks/useWalletAuth";
 import dynamic from "next/dynamic";
 import { X } from "lucide-react";
+import LoadingAnimation from "@/components/ui/Loader"; // Make sure to import your LoadingAnimation component
 
 const WalletConnectButton = dynamic(
   () => import("../components/WalletConnectButton"),
@@ -16,6 +17,7 @@ export default function Home() {
   const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
   const [username, setUsername] = useState("");
   const [walletChecked, setWalletChecked] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const checkWallet = useCallback(async () => {
     if (publicKey && !walletChecked) {
@@ -40,9 +42,12 @@ export default function Home() {
 
   const handleCreate = async () => {
     if (username && publicKey) {
+      setIsCreating(true);
       const user = await authenticateUser(username);
       if (user) {
         router.push("/dashboard");
+      } else {
+        setIsCreating(false);
       }
     }
   };
@@ -50,6 +55,13 @@ export default function Home() {
   const handleDisconnect = () => {
     // Implement wallet disconnection logic here
     setWalletChecked(false);
+  };
+
+  const truncateAddress = (address) => {
+    if (address.length > 12) {
+      return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+    return address;
   };
 
   return (
@@ -74,13 +86,13 @@ export default function Home() {
               placeholder="Add a username..."
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-screen max-w-md py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+              className="w-full max-w-md py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
             />
 
-            <div className="relative mb-4">
+            <div className="relative mb-4 w-full max-w-md mx-auto">
               <input
                 type="text"
-                value={publicKey}
+                value={truncateAddress(publicKey)}
                 readOnly
                 className="w-full p-4 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none"
               />
@@ -92,17 +104,19 @@ export default function Home() {
               </button>
             </div>
 
-            <button
-              onClick={handleCreate}
-              disabled={!username}
-              className={`w-full max-w-md p-4 rounded-3xl ${
-                username
-                  ? "bg-primary-pink hover:bg-primary-pink/90"
-                  : "bg-dark-blue cursor-not-allowed"
-              } transition-colors duration-300`}
-            >
-              Create
-            </button>
+            <div className="flex justify-center w-full max-w-md mx-auto">
+              <button
+                onClick={handleCreate}
+                disabled={!username || isCreating}
+                className={`w-full p-4 rounded-3xl ${
+                  username && !isCreating
+                    ? "bg-primary-pink hover:bg-primary-pink/90"
+                    : "bg-dark-blue cursor-not-allowed"
+                } transition-colors duration-300 flex justify-center items-center`}
+              >
+                {isCreating ? <LoadingAnimation size={24} /> : "Create"}
+              </button>
+            </div>
           </>
         ) : (
           <p>Checking wallet...</p>

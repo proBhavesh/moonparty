@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { X, Copy } from "lucide-react";
 import { generateInviteLink } from "../lib/utils";
+import Loader from "./ui/Loader";
 
 const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
   const [members, setMembers] = useState([]);
@@ -114,7 +115,10 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
 
         {/* party members */}
         {loading ? (
-          <p className="text-center text-white">Loading members...</p>
+          <p className="text-center text-white">
+            {" "}
+            <Loader />
+          </p>
         ) : (
           <ul className="space-y-2">
             {members.map((member) => (
