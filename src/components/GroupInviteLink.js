@@ -12,16 +12,16 @@ const GroupInviteLink = ({ inviteLink }) => {
 	};
 
 	return (
-		<div className="flex justify-between w-screen max-w-xs sm:max-w-lg border border-dashed border-white/60 rounded-3xl gap-3.5 p-4">
+		<div className="flex justify-between w-screen max-w-xs sm:max-w-lg border-2 border-dashed border-white/50 rounded-3xl p-3.5">
 			<input
 				type="text"
 				readOnly
 				value={fullInviteLink}
-				className="flex w-full pl-2 truncate bg-transparent text-white/60 focus:outline-none"
+				className="flex pl-2 truncate bg-transparent w-80 text-white/60 focus:outline-none"
 			/>
 			<button
 				onClick={copyToClipboard}
-				className="px-3 py-1.5 text-white rounded-full bg-primary-pink"
+				className="px-3.5 py-2 text-white rounded-full bg-primary-pink"
 			>
 				{copied ? "Copied!" : "Copy"}
 			</button>

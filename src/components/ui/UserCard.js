@@ -15,7 +15,7 @@ function UserCard({ id, src, name, count }) {
 				<p className="text-xl">{name}</p>
 			</div>
 
-			<div className="px-3 py-1.5 bg-primary-blue rounded-full justify-start items-center gap-3.5 flex">
+			<div className="px-3.5 py-2 bg-primary-blue rounded-full justify-start items-center gap-3.5 flex">
 				<span>+ {count}%</span>
 			</div>
 		</div>
