@@ -25,13 +25,30 @@ export default async function handler(req, res) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const { data: leaderboards, error } = await supabase
+    // Fetch the user's groups from group_members
+    const { data: userGroups, error: groupError } = await supabase
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", userData.id);
+
+    if (groupError) throw groupError;
+
+    if (!userGroups || userGroups.length === 0) {
+      return res.status(200).json([]); // User is not a member of any groups
+    }
+
+    // Extract group IDs
+    const groupIds = userGroups.map((group) => group.group_id);
+
+    // Fetch the latest daily rankings for the user in their groups
+    const { data: leaderboards, error: rankingError } = await supabase
       .from("daily_rankings")
       .select(
         `
         group_id,
         rank,
         daily_change_percentage,
+        ranking_date,
         leaderboard_groups (
           id,
           name
@@ -39,16 +56,29 @@ export default async function handler(req, res) {
       `
       )
       .eq("user_id", userData.id)
-      .eq("ranking_date", new Date().toISOString().split("T")[0]);
+      .in("group_id", groupIds)
+      .order("ranking_date", { ascending: false })
+      .order("rank", { ascending: true });
 
-    if (error) throw error;
+    if (rankingError) throw rankingError;
 
-    const formattedLeaderboards = leaderboards.map((board) => ({
-      id: board.leaderboard_groups.id,
-      name: board.leaderboard_groups.name,
-      rank: board.rank,
-      daily_change_percentage: board.daily_change_percentage,
-    }));
+    // Create a Map to store unique leaderboards (latest ranking for each group)
+    const uniqueLeaderboards = new Map();
+
+    leaderboards.forEach((board) => {
+      const key = board.group_id;
+      if (!uniqueLeaderboards.has(key)) {
+        uniqueLeaderboards.set(key, {
+          id: board.leaderboard_groups.id,
+          name: board.leaderboard_groups.name,
+          rank: board.rank,
+          daily_change_percentage: board.daily_change_percentage,
+          last_ranking_date: board.ranking_date,
+        });
+      }
+    });
+
+    const formattedLeaderboards = Array.from(uniqueLeaderboards.values());
 
     res.status(200).json(formattedLeaderboards);
   } catch (error) {

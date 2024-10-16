@@ -58,7 +58,6 @@ body {
 }
 
 @layer utilities {
-
   /* Keep the no-scrollbar utility for specific use if needed */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
