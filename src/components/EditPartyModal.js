@@ -72,10 +72,15 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
-        <button onClick={onClose} className="flex justify-end w-full">
-          <X size={32} className="p-2 text-white rounded-full bg-dark-blue" />
+        {/* <div className="z-20"> */}
+        <button className="flex justify-end w-full z-20 cursor-default">
+          <X
+            size={32}
+            className="p-2 text-white rounded-full bg-dark-blue cursor-pointer"
+            onClick={onClose}
+          />
         </button>
-
+        {/* </div> */}
         {/* heading */}
         <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
           <h2 className="text-xl font-medium">Edit Party</h2>
