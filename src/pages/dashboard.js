@@ -49,11 +49,11 @@ export default function Dashboard() {
 	}
 
 	return (
-		<div className="flex flex-col items-center space-y-4 text-white h-[85vh] sm:h-[88vh] justify-between">
+		<div className="flex flex-col items-center justify-between text-white h-[90vh]">
 			<div>
 				<h1 className="mb-3 text-2xl text-center">My Parties</h1>
 				{groups.length > 0 ? (
-					<ul className="flex flex-col items-center space-y-2">
+					<ul className="flex flex-col items-center space-y-2 overflow-scroll h-1/2">
 						{groups.map((group) => (
 							<li key={group.id}>
 								<PartyCard group={group} />
