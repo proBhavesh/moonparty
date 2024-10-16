@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "../../../context/WalletConnectionProvider";
 import { getAuthCookie } from "../../../lib/authCookies";
+import LoadingAnimation from "@/components/ui/Loader";
 
 export default function JoinGroup() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function JoinGroup() {
         throw new Error("Invalid response from server");
       }
 
-      router.push(`/group/${data.member.group_id}`);
+      router.push(`/dashboard`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -93,7 +94,9 @@ export default function JoinGroup() {
         </div>
       )}
       {joining ? (
-        <p>Joining group...</p>
+        <div className="text-sm text-center text-white">
+          <LoadingAnimation />
+        </div>
       ) : (
         <button
           onClick={joinGroup}

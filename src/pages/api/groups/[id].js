@@ -12,57 +12,64 @@ export default async function handler(req, res) {
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-    const { data, error } = await supabase
+    // First, fetch the group data
+    const { data: groupData, error: groupError } = await supabase
       .from("leaderboard_groups")
-      .select(
-        `
-        *,
-        group_members!inner (
-          users!inner (
-            wallet_address,
-            username
-          ),
-          user_id
-        ),
-        daily_rankings!inner (
-          user_id,
-          daily_change_percentage,
-          ranking_date
-        )
-      `
-      )
+      .select("*")
       .eq("id", id)
-      .eq("daily_rankings.group_id", id)
-      .gte("daily_rankings.ranking_date", yesterday.toISOString().split("T")[0])
-      .lte("daily_rankings.ranking_date", now.toISOString().split("T")[0]);
+      .single();
 
-    if (error) throw error;
+    if (groupError) throw groupError;
 
-    if (!data || data.length === 0) {
+    if (!groupData) {
       return res.status(404).json({ message: "Group not found" });
     }
 
+    // Then, fetch the group members
+    const { data: membersData, error: membersError } = await supabase
+      .from("group_members")
+      .select(
+        `
+        *,
+        users (
+          wallet_address,
+          username
+        )
+      `
+      )
+      .eq("group_id", id);
+
+    if (membersError) throw membersError;
+
+    // Finally, fetch the daily rankings
+    const { data: rankingsData, error: rankingsError } = await supabase
+      .from("daily_rankings")
+      .select("*")
+      .eq("group_id", id)
+      .gte("ranking_date", yesterday.toISOString().split("T")[0])
+      .lte("ranking_date", now.toISOString().split("T")[0]);
+
+    if (rankingsError) throw rankingsError;
+
     // Process the data to get the latest daily_change_percentage for each user
+    const processedMembers = membersData.map((member) => {
+      const userRankings = rankingsData
+        .filter((ranking) => ranking.user_id === member.user_id)
+        .sort((a, b) => new Date(b.ranking_date) - new Date(a.ranking_date));
+
+      const latestRanking = userRankings[0];
+
+      return {
+        ...member,
+        daily_change_percentage: latestRanking
+          ? latestRanking.daily_change_percentage
+          : 0,
+      };
+    });
+
     const processedData = {
-      ...data[0],
-      group_members: data[0].group_members.map((member) => {
-        const userRankings = data
-          .filter((d) => d.daily_rankings.user_id === member.user_id)
-          .map((d) => ({
-            daily_change_percentage: d.daily_rankings.daily_change_percentage,
-            ranking_date: d.daily_rankings.ranking_date,
-          }))
-          .sort((a, b) => new Date(b.ranking_date) - new Date(a.ranking_date));
-
-        const latestRanking = userRankings[0];
-
-        return {
-          ...member,
-          daily_change_percentage: latestRanking
-            ? latestRanking.daily_change_percentage
-            : 0,
-        };
-      }),
+      ...groupData,
+      group_members: processedMembers,
     };
 
     res.status(200).json(processedData);

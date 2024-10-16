@@ -45,6 +45,8 @@ export default function GroupDetails() {
     return <div>Group not found.</div>;
   }
 
+  console.log("group from id", group);
+
   return (
     <div className="flex flex-col items-center mt-10 space-y-4">
       <TopUsers members={group.group_members} />
