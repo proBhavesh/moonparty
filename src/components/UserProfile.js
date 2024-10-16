@@ -54,8 +54,8 @@ const UserProfile = ({ onClose }) => {
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar">
-				<div className="flex-grow px-1 py-2 overflow-y-auto sm:p-5">
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
+				<div className="flex-shrink-0 px-1 py-2 sm:p-5">
 					<button
 						onClick={onClose}
 						className="flex justify-end w-full"
@@ -67,7 +67,7 @@ const UserProfile = ({ onClose }) => {
 					</button>
 
 					{/* profile pic, username & wallet address */}
-					<div className="flex flex-col items-center gap-2 mb-4 -mt-5">
+					<div className="flex flex-col items-center gap-2 -mt-5">
 						<Image
 							src="/sample-img.png"
 							alt="User Avatar"
@@ -81,8 +81,10 @@ const UserProfile = ({ onClose }) => {
 							</p>
 						</div>
 					</div>
+				</div>
 
-					{/* leaderboards */}
+				{/* leaderboards */}
+				<div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
 					{loading ? (
 						<p className="text-center text-white">
 							Loading leaderboards...
@@ -100,7 +102,7 @@ const UserProfile = ({ onClose }) => {
 				</div>
 
 				{/* logout button */}
-				<div className="p-5">
+				<div className="flex-shrink-0 p-5">
 					<button
 						onClick={handleLogout}
 						className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"

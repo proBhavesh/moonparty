@@ -21,13 +21,18 @@
 @tailwind utilities;
 
 /* Global styles to hide scrollbars */
-html, body {
-  scrollbar-width: none;  /* Firefox */
-  -ms-overflow-style: none;  /* IE and Edge */
+html,
+body {
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
 }
 
-html::-webkit-scrollbar, body::-webkit-scrollbar {
-  display: none;  /* Chrome, Safari, and Opera */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari, and Opera */
 }
 
 body {
