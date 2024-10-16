@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     if (addMemberError) throw addMemberError;
 
     // Update P&L for the new user
-    await updateDailyPnL(userId);
+    // await updateDailyPnL(userId);
 
     res
       .status(200)

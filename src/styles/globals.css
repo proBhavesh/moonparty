@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'SF Pro';
+  src: url('/fonts/SFPROREGULAR.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  src: url('/fonts/SFPROBOLD.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Reem+Kufi+Fun:wght@400..700&display=swap');
 
 @tailwind base;
@@ -5,7 +21,7 @@
 @tailwind utilities;
 
 body {
-  font-family: 'Helvetica', sans-serif;
+  font-family: 'SF Pro', 'Helvetica', sans-serif;
 }
 
 .diamond-gradient {
@@ -17,7 +33,6 @@ body {
 }
 
 @layer utilities {
-
   /* Hide scrollbar for Chrome, Safari and Opera */
   .no-scrollbar::-webkit-scrollbar {
     display: none;
