@@ -6,6 +6,7 @@ import GroupInviteLink from "../../components/GroupInviteLink";
 import AssetSnapshot from "../../components/AssetSnapshot";
 import TopUsers from "@/components/TopUsers";
 import MembersList from "@/components/MembersList";
+import Loader from "@/components/ui/Loader";
 
 export default function GroupDetails() {
 	const router = useRouter();
@@ -33,7 +34,7 @@ export default function GroupDetails() {
 	};
 
 	if (loading) {
-		return <div>Loading...</div>;
+		return <Loader />;
 	}
 
 	if (!isAuthenticated) {
@@ -56,7 +57,7 @@ export default function GroupDetails() {
 				handleGroupClick={() => {}}
 			/>
 
-			<GroupInviteLink inviteLink={group.invite_link} />
+			{/* <GroupInviteLink inviteLink={group.invite_link} /> */}
 		</div>
 	);
 }
