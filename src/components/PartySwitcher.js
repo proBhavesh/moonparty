@@ -23,20 +23,20 @@ const PartySwitcher = ({ onClose, onSelect, parties }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
-        <button className="flex justify-end w-full z-20 cursor-default">
+        <button className="z-20 flex justify-end w-full cursor-default">
           <X
             size={32}
-            className="p-2 text-white rounded-full bg-dark-blue cursor-pointer"
+            className="p-2 text-white rounded-full cursor-pointer bg-dark-blue"
             onClick={onClose}
           />
         </button>
-        <h2 className="text-xl font-medium text-center text-white mb-4">
+        <h2 className="mb-4 text-xl font-medium text-center text-white">
           My Parties
         </h2>
         {parties.length > 0 ? (
-          <ul className="flex-grow flex flex-col items-center space-y-2 overflow-y-auto">
+          <ul className="flex flex-col items-center flex-grow space-y-2 overflow-y-auto">
             {parties.map((group) => (
-              <li key={group.id} className="w-full">
+              <li key={group.id}>
                 <PartyCard group={group} onClick={handleGroupClick} />
               </li>
             ))}

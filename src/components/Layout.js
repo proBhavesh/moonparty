@@ -19,7 +19,7 @@ const Layout = ({ children }) => {
       <div className="w-screen h-screen p-1 diamond-gradient">
         <div className="w-full h-full bg-primary-blue">
           {!isHomePage && <Navbar />}
-          <main className="mx-auto">{children}</main>
+          <main className="w-full h-full mx-auto">{children}</main>
         </div>
       </div>
     </>

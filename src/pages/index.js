@@ -122,7 +122,7 @@ export default function Home() {
 	};
 
 	return (
-		<div className="text-white">
+		<div className="flex flex-col items-center justify-center h-full text-white">
 			<div className="text-center">
 				<h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
 					🌝 moonparty
