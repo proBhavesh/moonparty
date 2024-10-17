@@ -1,0 +1,2799 @@
+File: middleware.js
+Content:
+import { NextResponse } from "next/server";
+import { getAuthCookie } from "./lib/authCookies";
+
+export function middleware(request) {
+  const authCookie = getAuthCookie({ req: request });
+
+  // List of paths that don't require authentication
+  const publicPaths = ["/", "/api/"];
+
+  if (
+    !authCookie &&
+    !publicPaths.some((path) => request.nextUrl.pathname.startsWith(path))
+  ) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+  ],
+};
+
+
+==================================================
+
+File: hooks/useWalletAuth.js
+Content:
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useState, useCallback } from "react";
+import { supabase } from "../lib/supabase";
+import { setAuthCookie, removeAuthCookie } from "../lib/authCookies";
+
+export const useWalletAuth = () => {
+  const { publicKey, signMessage } = useWallet();
+  const [user, setUser] = useState(null);
+
+  const checkWalletExists = useCallback(async (walletAddress) => {
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("wallet_address", walletAddress)
+        .single();
+
+      if (error && error.code !== "PGRST116") throw error;
+      return data;
+    } catch (error) {
+      console.error("Error checking wallet:", error);
+      return null;
+    }
+  }, []);
+
+  const authenticateUser = useCallback(
+    async (username) => {
+      if (!publicKey || !signMessage || !username) {
+        console.log(
+          "Cannot authenticate: missing publicKey, signMessage, or username"
+        );
+        return null;
+      }
+
+      try {
+        const message = `Authenticate with Solana Wallet Leaderboard: ${new Date().toISOString()}`;
+        const encodedMessage = new TextEncoder().encode(message);
+        const signedMessage = await signMessage(encodedMessage);
+
+        const { data, error } = await supabase
+          .from("users")
+          .upsert(
+            {
+              wallet_address: publicKey.toString(),
+              username: username,
+            },
+            {
+              onConflict: "wallet_address",
+              update: { username: username },
+            }
+          )
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setUser(data);
+        setAuthCookie(data);
+        return data;
+      } catch (error) {
+        console.error("Error authenticating user:", error);
+        return null;
+      }
+    },
+    [publicKey, signMessage]
+  );
+
+  const loginUser = useCallback(async (userData) => {
+    setUser(userData);
+    setAuthCookie(userData);
+    return userData;
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    removeAuthCookie();
+  }, []);
+
+  return { user, checkWalletExists, authenticateUser, loginUser, logout };
+};
+
+
+==================================================
+
+File: hooks/useLeaderboard.js
+Content:
+import { useState, useEffect } from "react";
+import { supabase } from "../lib/supabase";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+export const useLeaderboard = (groupId) => {
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const { publicKey } = useWallet();
+
+  useEffect(() => {
+    if (groupId && publicKey) {
+      fetchLeaderboard();
+    }
+  }, [groupId, publicKey]);
+
+  const fetchLeaderboard = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("daily_rankings")
+        .select(
+          "users(username, wallet_address), daily_change_percentage, daily_change_value, rank"
+        )
+        .eq("group_id", groupId)
+        .order("rank", { ascending: true });
+
+      if (error) throw error;
+
+      setLeaderboard(data);
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { leaderboard, loading, refreshLeaderboard: fetchLeaderboard };
+};
+
+
+==================================================
+
+File: pages/dashboard.js
+Content:
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { useWalletConnection } from "../context/WalletConnectionProvider";
+import CreateBtn from "@/components/ui/CreateBtn";
+import PartyCard from "@/components/ui/PartyCard";
+import Loader from "@/components/ui/Loader";
+
+export default function Dashboard() {
+  const router = useRouter();
+  const { isAuthenticated, publicKey, checkAndSetAuthState } =
+    useWalletConnection();
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [createLoading, setCreateLoading] = useState(false);
+
+  useEffect(() => {
+    const initDashboard = async () => {
+      const authState = await checkAndSetAuthState();
+      if (authState.isAuthenticated && authState.publicKey) {
+        fetchUserGroups(authState.publicKey);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    initDashboard();
+  }, [checkAndSetAuthState]);
+
+  const fetchUserGroups = async (walletPublicKey) => {
+    try {
+      const response = await fetch(`/api/dashboard/${walletPublicKey}`);
+      const data = await response.json();
+      setGroups(data);
+    } catch (error) {
+      console.error("Error fetching user groups:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateClick = () => {
+    setCreateLoading(true);
+    router.push("/create-group");
+  };
+
+  if (loading) {
+    return (
+      <div className="text-sm text-center text-white">
+        <Loader />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="text-sm text-center text-white">
+        Please connect your wallet to view the dashboard.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-between text-white h-[90vh]">
+      <h1 className="mb-3 text-2xl text-center">My Parties</h1>
+      {groups.length > 0 ? (
+        <ul className="flex flex-col items-center space-y-2 overflow-scroll h-1/2 md:h-3/4">
+          {groups.map((group) => (
+            <li key={group.id}>
+              <PartyCard group={group} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>You have not created any parties yet.</p>
+      )}
+
+      <div>
+        <CreateBtn
+          onClick={handleCreateClick}
+          loading={createLoading}
+          text={"Create New Party"}
+        />
+      </div>
+    </div>
+  );
+}
+
+
+==================================================
+
+File: pages/index.js
+Content:
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/router";
+import { useWalletConnection } from "../context/WalletConnectionProvider";
+import { useWalletAuth } from "../hooks/useWalletAuth";
+import dynamic from "next/dynamic";
+import { X } from "lucide-react";
+import LoadingAnimation from "@/components/ui/Loader"; // Make sure to import your LoadingAnimation component
+
+const WalletConnectButton = dynamic(
+  () => import("../components/WalletConnectButton"),
+  { ssr: false }
+);
+
+export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, user, publicKey } = useWalletConnection();
+  const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
+  const [username, setUsername] = useState("");
+  const [walletChecked, setWalletChecked] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const checkWallet = useCallback(async () => {
+    if (publicKey && !walletChecked) {
+      const existingUser = await checkWalletExists(publicKey);
+      if (existingUser) {
+        await loginUser(existingUser);
+        router.push("/dashboard");
+      }
+      setWalletChecked(true);
+    }
+  }, [publicKey, walletChecked, checkWalletExists, loginUser, router]);
+
+  useEffect(() => {
+    checkWallet();
+  }, [checkWallet]);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      router.push("/dashboard");
+    }
+  }, [isAuthenticated, user, router]);
+
+  const handleCreate = async () => {
+    if (username && publicKey) {
+      setIsCreating(true);
+      const user = await authenticateUser(username);
+      if (user) {
+        router.push("/dashboard");
+      } else {
+        setIsCreating(false);
+      }
+    }
+  };
+
+  const handleDisconnect = () => {
+    // Implement wallet disconnection logic here
+    setWalletChecked(false);
+  };
+
+  const truncateAddress = (address) => {
+    if (address.length > 12) {
+      return `${address.slice(0, 6)}...${address.slice(-4)}`;
+    }
+    return address;
+  };
+
+  return (
+    <div className="mt-5 text-white">
+      <div className="text-center">
+        <h1 className="mb-8 text-4xl font-bold font-reem-kufi-fun">
+          🌝 moonparty
+        </h1>
+
+        <div className="flex items-center justify-center w-24 h-24 mx-auto mb-8 rounded-full bg-dark-blue">
+          <div className="text-4xl">😊</div>
+        </div>
+
+        {!publicKey ? (
+          <div className="mb-4">
+            <WalletConnectButton />
+          </div>
+        ) : walletChecked && !user ? (
+          <>
+            <input
+              type="text"
+              placeholder="Add a username..."
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full max-w-md py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+            />
+
+            <div className="relative mb-4 w-full max-w-md mx-auto">
+              <input
+                type="text"
+                value={truncateAddress(publicKey)}
+                readOnly
+                className="w-full p-4 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none"
+              />
+              <button
+                className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
+                onClick={handleDisconnect}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex justify-center w-full max-w-md mx-auto">
+              <button
+                onClick={handleCreate}
+                disabled={!username || isCreating}
+                className={`w-full p-4 rounded-3xl ${
+                  username && !isCreating
+                    ? "bg-primary-pink hover:bg-primary-pink/90"
+                    : "bg-dark-blue cursor-not-allowed"
+                } transition-colors duration-300 flex justify-center items-center`}
+              >
+                {isCreating ? <LoadingAnimation size={24} /> : "Create"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p>Checking wallet...</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+==================================================
+
+File: pages/_app.js
+Content:
+import "../styles/globals.css";
+import { SolanaProvider } from "../lib/solanaUtils";
+import { WalletConnectionProvider } from "../context/WalletConnectionProvider";
+import Layout from "../components/Layout";
+
+function MyApp({ Component, pageProps }) {
+	return (
+		<SolanaProvider>
+			<WalletConnectionProvider>
+				<Layout>
+					<Component {...pageProps} />
+				</Layout>
+			</WalletConnectionProvider>
+		</SolanaProvider>
+	);
+}
+
+export default MyApp;
+
+
+==================================================
+
+File: pages/create-group.js
+Content:
+import { useState } from "react";
+import { useWalletConnection } from "../context/WalletConnectionProvider";
+import { useRouter } from "next/router";
+import Loader from "@/components/ui/Loader"; // Make sure you have this component
+
+export default function CreateGroup() {
+  const [groupName, setGroupName] = useState("");
+  const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { isAuthenticated, publicKey } = useWalletConnection();
+  const router = useRouter();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    if (!isAuthenticated) {
+      setError("Please connect your wallet to create a group.");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: groupName,
+          creatorWallet: publicKey,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create group");
+      }
+
+      const data = await response.json();
+      router.push(`/group/${data.id}`);
+    } catch (error) {
+      console.error("Error creating group:", error);
+      setError("Failed to create group. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isAuthenticated) {
+    return <div>Please connect your wallet to create a group.</div>;
+  }
+
+  return (
+    <div>
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col items-center mt-10 space-y-4"
+      >
+        <div>
+          <input
+            type="text"
+            required
+            name="groupName"
+            value={groupName}
+            placeholder="Party Name..."
+            onChange={(e) => setGroupName(e.target.value)}
+            className="w-screen max-w-md py-5 text-center text-white placeholder-purple-300 md:max-w-lg rounded-3xl bg-dark-blue"
+          />
+        </div>
+
+        {error && <p className="text-white text-md">{error}</p>}
+
+        <div className="">
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-screen max-w-md md:max-w-lg py-5"
+          >
+            {isLoading ? (
+              <div className="flex items-center justify-center w-6 h-6">
+                <Loader size={24} /> {/* Adjust size as needed */}
+              </div>
+            ) : (
+              <span className="text-center text-white text-md">
+                Create New Party
+              </span>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+
+==================================================
+
+File: pages/_document.js
+Content:
+import Document, { Html, Head, Main, NextScript } from "next/document";
+
+class MyDocument extends Document {
+  render() {
+    return (
+      <Html lang="en">
+        <Head>
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link
+            rel="preconnect"
+            href="https://fonts.gstatic.com"
+            crossOrigin="true"
+          />
+          <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+          />
+        </Head>
+        <body>
+          <Main />
+          <NextScript />
+        </body>
+      </Html>
+    );
+  }
+}
+
+export default MyDocument;
+
+
+==================================================
+
+File: pages/api/cron-daily-pnl-update.js
+Content:
+import { updateDailyPnL } from "../../lib/updateDailyPnL";
+
+export default async function handler(req, res) {
+  // Check for a secret token to ensure this route can only be called by the Vercel cron job
+  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET_TOKEN}`) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  try {
+    await updateDailyPnL();
+    res
+      .status(200)
+      .json({ message: "Daily P&L update completed successfully" });
+  } catch (error) {
+    console.error("Error in cron job:", error);
+    res
+      .status(500)
+      .json({ message: "Error updating daily P&L", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/update-daily-pnl.js
+Content:
+import { supabase } from "../../lib/supabase";
+import axios from "axios";
+
+async function getWalletBalance(walletAddress) {
+  try {
+    const response = await axios.get(
+      `https://openapiv1.coinstats.app/wallet/balance?address=${walletAddress}&connectionId=solana`,
+      {
+        headers: {
+          "X-API-KEY": process.env.NEXT_PUBLIC_COINSTATS_API_KEY,
+          accept: "application/json",
+        },
+      }
+    );
+
+    const solData = response.data.find((coin) => coin.coinId === "solana");
+    return {
+      amount: solData.amount,
+      price: solData.price,
+    };
+  } catch (error) {
+    console.error("Error fetching wallet balance:", error);
+    throw error;
+  }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  try {
+    const { data: users, error: userError } = await supabase
+      .from("users")
+      .select("id, wallet_address");
+
+    if (userError) throw userError;
+
+    const today = new Date().toISOString().split("T")[0];
+
+    for (const user of users) {
+      const { amount: solAmount, price: solPrice } = await getWalletBalance(
+        user.wallet_address
+      );
+      const currentValueUSD = solAmount * solPrice;
+
+      // Insert or update asset snapshot
+      const { error: snapshotError } = await supabase
+        .from("asset_snapshots")
+        .upsert(
+          {
+            user_id: user.id,
+            total_value: currentValueUSD,
+            sol_amount: solAmount,
+            sol_price_usd: solPrice,
+            snapshot_date: today,
+          },
+          {
+            onConflict: "user_id, snapshot_date",
+          }
+        );
+
+      if (snapshotError) throw snapshotError;
+
+      // Get yesterday's snapshot
+      const yesterday = new Date(new Date().setDate(new Date().getDate() - 1))
+        .toISOString()
+        .split("T")[0];
+      const { data: yesterdaySnapshot } = await supabase
+        .from("asset_snapshots")
+        .select("total_value, sol_amount, sol_price_usd")
+        .eq("user_id", user.id)
+        .eq("snapshot_date", yesterday)
+        .single();
+
+      let yesterdayValueUSD = currentValueUSD;
+      if (yesterdaySnapshot) {
+        yesterdayValueUSD = yesterdaySnapshot.total_value;
+      }
+
+      // Calculate daily change
+      const dailyChangeValue = currentValueUSD - yesterdayValueUSD;
+      const dailyChangePercentage =
+        yesterdayValueUSD !== 0
+          ? (dailyChangeValue / yesterdayValueUSD) * 100
+          : 0;
+
+      // Fetch all groups the user is a member of
+      const { data: userGroups } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", user.id);
+
+      for (const { group_id } of userGroups) {
+        // Insert or update daily ranking for each group
+        await supabase.from("daily_rankings").upsert(
+          {
+            user_id: user.id,
+            group_id,
+            ranking_date: today,
+            current_balance: currentValueUSD,
+            sol_amount: solAmount,
+            sol_price_usd: solPrice,
+            daily_change_percentage: dailyChangePercentage,
+            daily_change_value: dailyChangeValue,
+            rank: 0, // We'll update ranks in a separate step
+          },
+          {
+            onConflict: "user_id, group_id, ranking_date",
+          }
+        );
+      }
+    }
+
+    // Update ranks for each group
+    const { data: groups } = await supabase
+      .from("leaderboard_groups")
+      .select("id");
+
+    for (const { id: group_id } of groups) {
+      const { data: groupRankings } = await supabase
+        .from("daily_rankings")
+        .select("id, daily_change_percentage")
+        .eq("group_id", group_id)
+        .eq("ranking_date", today)
+        .order("daily_change_percentage", { ascending: false });
+
+      for (let i = 0; i < groupRankings.length; i++) {
+        await supabase
+          .from("daily_rankings")
+          .update({ rank: i + 1 })
+          .eq("id", groupRankings[i].id);
+      }
+    }
+
+    res
+      .status(200)
+      .json({ message: "Daily P&L update completed successfully" });
+  } catch (error) {
+    console.error("Error updating daily P&L:", error);
+    res
+      .status(500)
+      .json({ message: "Error updating daily P&L", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/user/leaderboards.js
+Content:
+import { supabase } from "../../../lib/supabase";
+
+export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  const { walletAddress } = req.query;
+
+  if (!walletAddress) {
+    return res.status(400).json({ message: "Wallet address is required" });
+  }
+
+  try {
+    // First, get the user's ID from their wallet address
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("wallet_address", walletAddress)
+      .single();
+
+    if (userError) throw userError;
+
+    if (!userData) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Fetch the user's groups from group_members
+    const { data: userGroups, error: groupError } = await supabase
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", userData.id);
+
+    console.log("userData", userData);
+    console.log("userGroups", userGroups);
+
+    if (groupError) throw groupError;
+
+    if (!userGroups || userGroups.length === 0) {
+      return res.status(200).json([]); // User is not a member of any groups
+    }
+
+    // Extract group IDs
+    const groupIds = userGroups.map((group) => group.group_id);
+
+    // Fetch the latest daily rankings for the user in their groups
+    const { data: leaderboards, error: rankingError } = await supabase
+      .from("daily_rankings")
+      .select(
+        `
+        group_id,
+        rank,
+        daily_change_percentage,
+        ranking_date,
+        leaderboard_groups (
+          id,
+          name
+        )
+      `
+      )
+      .eq("user_id", userData.id)
+      .in("group_id", groupIds)
+      .order("ranking_date", { ascending: false })
+      .order("rank", { ascending: true });
+
+    if (rankingError) throw rankingError;
+
+    // Create a Map to store unique leaderboards (latest ranking for each group)
+    const uniqueLeaderboards = new Map();
+
+    leaderboards.forEach((board) => {
+      const key = board.group_id;
+      if (!uniqueLeaderboards.has(key)) {
+        uniqueLeaderboards.set(key, {
+          id: board.leaderboard_groups.id,
+          name: board.leaderboard_groups.name,
+          rank: board.rank,
+          daily_change_percentage: board.daily_change_percentage,
+          last_ranking_date: board.ranking_date,
+        });
+      }
+    });
+
+    const formattedLeaderboards = Array.from(uniqueLeaderboards.values());
+
+    res.status(200).json(formattedLeaderboards);
+  } catch (error) {
+    console.error("Error fetching user leaderboards:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching leaderboards", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/rankings/[groupid].js
+Content:
+import { supabase } from "../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { groupId } = req.query;
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("daily_rankings")
+      .select(
+        `
+        *,
+        users (
+          wallet_address,
+          username
+        )
+      `
+      )
+      .eq("group_id", groupId)
+      .order("rank", { ascending: true });
+
+    if (error) throw error;
+
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error fetching rankings:", error);
+    res.status(500).json({ message: "Error fetching rankings" });
+  }
+}
+
+
+==================================================
+
+File: pages/api/dashboard/[id].js
+Content:
+import { supabase } from "../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { id: userWallet } = req.query;
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  try {
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("wallet_address", userWallet)
+      .single();
+
+    if (userError) {
+      if (userError.code === "PGRST116") {
+        return res.status(404).json({ message: "User not found" });
+      }
+      throw userError;
+    }
+
+    const { data: groupsData, error: groupsError } = await supabase
+      .from("leaderboard_groups")
+      .select(
+        `
+        id,
+        name,
+        created_by,
+        invite_link,
+        group_members (
+          users (
+            wallet_address,
+            username
+          )
+        )
+      `
+      )
+      .eq("created_by", userData.id);
+
+    if (groupsError) {
+      throw groupsError;
+    }
+
+    const formattedGroups = groupsData.map((group) => ({
+      ...group,
+      members_count: group.group_members.length,
+    }));
+
+    res.status(200).json(formattedGroups);
+  } catch (error) {
+    console.error("Error fetching created groups:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching created groups", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/join.js
+Content:
+import { supabase } from "../../../lib/supabase";
+import { updateDailyPnL } from "../../../lib/updateDailyPnL";
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  const { inviteLink, userWallet } = req.body;
+
+  if (!inviteLink || !userWallet) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  try {
+    // Fetch the user ID using the wallet address
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("wallet_address", userWallet)
+      .single();
+
+    if (userError) {
+      throw new Error("User not found");
+    }
+
+    const userId = userData.id;
+
+    // Fetch the group using the invite link
+    const { data: groupData, error: groupError } = await supabase
+      .from("leaderboard_groups")
+      .select("id")
+      .eq("invite_link", inviteLink)
+      .single();
+
+    if (groupError) {
+      throw new Error("Invalid invite link");
+    }
+
+    // Check if the user is already a member of the group
+    const { data: existingMember, error: memberCheckError } = await supabase
+      .from("group_members")
+      .select()
+      .eq("user_id", userId)
+      .eq("group_id", groupData.id)
+      .single();
+
+    if (existingMember) {
+      return res
+        .status(400)
+        .json({ message: "User is already a member of this group" });
+    }
+
+    // Add user to the group
+    const { data: newMember, error: addMemberError } = await supabase
+      .from("group_members")
+      .insert({ user_id: userId, group_id: groupData.id })
+      .select()
+      .single();
+
+    if (addMemberError) throw addMemberError;
+
+    // Update P&L for the new user
+    await updateDailyPnL(userId);
+
+    res
+      .status(200)
+      .json({ message: "Successfully joined the group", member: newMember });
+  } catch (error) {
+    console.error("Error joining group:", error);
+    res
+      .status(500)
+      .json({ message: "Error joining group", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/create.js
+Content:
+import { supabase } from "../../../lib/supabase";
+import crypto from "crypto";
+
+function generateInviteLink() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  const { name, creatorWallet } = req.body;
+
+  if (!name || !creatorWallet) {
+    return res.status(400).json({ message: "Missing required fields" });
+  }
+
+  try {
+    // Fetch the user ID using the wallet address
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("wallet_address", creatorWallet)
+      .single();
+
+    if (userError) {
+      throw new Error("User not found");
+    }
+
+    const userId = userData.id;
+    const inviteLink = generateInviteLink();
+
+    // Create the leaderboard group
+    const { data: groupData, error: groupError } = await supabase
+      .from("leaderboard_groups")
+      .insert({ name, created_by: userId, invite_link: inviteLink })
+      .select()
+      .single();
+
+    if (groupError) throw groupError;
+
+    // Add creator to the group
+    const { error: memberError } = await supabase
+      .from("group_members")
+      .insert({ user_id: userId, group_id: groupData.id });
+
+    if (memberError) throw memberError;
+
+    res.status(200).json({ ...groupData, invite_link: inviteLink });
+  } catch (error) {
+    console.error("Error creating group:", error);
+    res
+      .status(500)
+      .json({ message: "Error creating group", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/[id].js
+Content:
+import { supabase } from "../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { id } = req.query;
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
+
+  try {
+    // Get the current date and the date 24 hours ago
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // First, fetch the group data
+    const { data: groupData, error: groupError } = await supabase
+      .from("leaderboard_groups")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (groupError) throw groupError;
+
+    if (!groupData) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    // Then, fetch the group members
+    const { data: membersData, error: membersError } = await supabase
+      .from("group_members")
+      .select(
+        `
+        *,
+        users (
+          wallet_address,
+          username
+        )
+      `
+      )
+      .eq("group_id", id);
+
+    if (membersError) throw membersError;
+
+    // Finally, fetch the daily rankings
+    const { data: rankingsData, error: rankingsError } = await supabase
+      .from("daily_rankings")
+      .select("*")
+      .eq("group_id", id)
+      .gte("ranking_date", yesterday.toISOString().split("T")[0])
+      .lte("ranking_date", now.toISOString().split("T")[0]);
+
+    if (rankingsError) throw rankingsError;
+
+    // Process the data to get the latest daily_change_percentage for each user
+    const processedMembers = membersData.map((member) => {
+      const userRankings = rankingsData
+        .filter((ranking) => ranking.user_id === member.user_id)
+        .sort((a, b) => new Date(b.ranking_date) - new Date(a.ranking_date));
+
+      const latestRanking = userRankings[0];
+
+      return {
+        ...member,
+        daily_change_percentage: latestRanking
+          ? latestRanking.daily_change_percentage
+          : 0,
+      };
+    });
+
+    const processedData = {
+      ...groupData,
+      group_members: processedMembers,
+    };
+
+    res.status(200).json(processedData);
+  } catch (error) {
+    console.error("Error fetching group details:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching group details", error: error.message });
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/[id]/details.js
+Content:
+import { supabase } from "../../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { id } = req.query;
+
+  if (req.method === "GET") {
+    try {
+      const { data, error } = await supabase
+        .from("leaderboard_groups")
+        .select("id, name, invite_link")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      if (!data) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+
+      res.status(200).json(data);
+    } catch (error) {
+      console.error("Error fetching group details:", error);
+      res
+        .status(500)
+        .json({
+          message: "Error fetching group details",
+          error: error.message,
+        });
+    }
+  } else {
+    res.setHeader("Allow", ["GET"]);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/[id]/members.js
+Content:
+import { supabase } from "../../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { id } = req.query;
+
+  if (req.method === "GET") {
+    try {
+      const { data, error } = await supabase
+        .from("group_members")
+        .select(
+          `
+          user_id,
+          group_id,
+          joined_at,
+          users (
+            id,
+            username,
+            wallet_address
+          )
+        `
+        )
+        .eq("group_id", id);
+
+      if (error) throw error;
+
+      const members = data.map((item) => ({
+        user_id: item.user_id,
+        group_id: item.group_id,
+        joined_at: item.joined_at,
+        ...item.users,
+      }));
+
+      res.status(200).json(members);
+    } catch (error) {
+      console.error("Error fetching group members:", error);
+      res
+        .status(500)
+        .json({
+          message: "Error fetching group members",
+          error: error.message,
+        });
+    }
+  } else {
+    res.setHeader("Allow", ["GET"]);
+    res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+}
+
+
+==================================================
+
+File: pages/api/groups/[id]/members/[userId].js
+Content:
+import { supabase } from "../../../../../lib/supabase";
+
+export default async function handler(req, res) {
+  const { id: groupId, userId } = req.query;
+
+  if (req.method !== "DELETE") {
+    res.setHeader("Allow", ["DELETE"]);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  try {
+    // Check if the user is the creator of the group
+    const { data: groupData, error: groupError } = await supabase
+      .from("leaderboard_groups")
+      .select("created_by")
+      .eq("id", groupId)
+      .single();
+
+    if (groupError) {
+      console.error("Error fetching group data:", groupError);
+      return res
+        .status(500)
+        .json({
+          message: "Error fetching group data",
+          error: groupError.message,
+        });
+    }
+
+    if (groupData.created_by === parseInt(userId)) {
+      return res
+        .status(403)
+        .json({ message: "Cannot remove the group creator" });
+    }
+
+    // Remove from group_members
+    const { error: groupMemberError } = await supabase
+      .from("group_members")
+      .delete()
+      .eq("user_id", userId)
+      .eq("group_id", groupId);
+
+    if (groupMemberError) {
+      console.error("Error removing from group_members:", groupMemberError);
+      return res.status(500).json({
+        message: "Error removing from group_members",
+        error: groupMemberError.message,
+      });
+    }
+
+    // Remove from daily_rankings
+    const { error: dailyRankingsError } = await supabase
+      .from("daily_rankings")
+      .delete()
+      .eq("user_id", userId)
+      .eq("group_id", groupId);
+
+    if (dailyRankingsError) {
+      console.error("Error removing from daily_rankings:", dailyRankingsError);
+      return res.status(500).json({
+        message: "Error removing from daily_rankings",
+        error: dailyRankingsError.message,
+      });
+    }
+
+    // If you need to remove from other tables, add those operations here
+    // For example:
+    // const { error: otherTableError } = await supabase
+    //   .from("other_table")
+    //   .delete()
+    //   .eq("user_id", userId)
+    //   .eq("group_id", groupId);
+    //
+    // if (otherTableError) {
+    //   console.error("Error removing from other_table:", otherTableError);
+    //   return res.status(500).json({ message: "Error removing from other_table", error: otherTableError.message });
+    // }
+
+    res
+      .status(200)
+      .json({ message: "Member removed successfully from all related tables" });
+  } catch (error) {
+    console.error("Unexpected error removing group member:", error);
+    res.status(500).json({
+      message: "Unexpected error removing group member",
+      error: error.message,
+    });
+  }
+}
+
+
+==================================================
+
+File: pages/fonts/GeistMonoVF.woff
+Content:
+Error reading file: 'utf-8' codec can't decode byte 0xee in position 18: invalid continuation byte
+
+==================================================
+
+File: pages/fonts/GeistVF.woff
+Content:
+Error reading file: 'utf-8' codec can't decode byte 0xdc in position 11: invalid continuation byte
+
+==================================================
+
+File: pages/group/[id].js
+Content:
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { useWalletConnection } from "../../context/WalletConnectionProvider";
+import LeaderboardTable from "../../components/LeaderboardTable";
+import GroupInviteLink from "../../components/GroupInviteLink";
+import AssetSnapshot from "../../components/AssetSnapshot";
+import TopUsers from "@/components/TopUsers";
+import MembersList from "@/components/MembersList";
+import Loader from "@/components/ui/Loader";
+
+export default function GroupDetails() {
+  const router = useRouter();
+  const { id } = router.query;
+  const [group, setGroup] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const { isAuthenticated, publicKey } = useWalletConnection();
+
+  useEffect(() => {
+    if (id && isAuthenticated) {
+      fetchGroupDetails();
+    }
+  }, [id, isAuthenticated]);
+
+  const fetchGroupDetails = async () => {
+    try {
+      const response = await fetch(`/api/groups/${id}`);
+      const data = await response.json();
+      setGroup(data);
+    } catch (error) {
+      console.error("Error fetching group details:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <Loader />;
+  }
+
+  if (!isAuthenticated) {
+    return <div>Please connect your wallet to view group details.</div>;
+  }
+
+  if (!group) {
+    return <div>Group not found.</div>;
+  }
+
+  console.log("group from id", group);
+
+  return (
+    <div className="flex flex-col items-center mt-10 space-y-4">
+      <TopUsers members={group.group_members} />
+      {/* members */}
+      <MembersList members={group.group_members} handleGroupClick={() => {}} />
+
+      {/* <GroupInviteLink inviteLink={group.invite_link} /> */}
+    </div>
+  );
+}
+
+
+==================================================
+
+File: pages/group/join/[inviteLink].js
+Content:
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { useWalletConnection } from "../../../context/WalletConnectionProvider";
+import { getAuthCookie } from "../../../lib/authCookies";
+import LoadingAnimation from "@/components/ui/Loader";
+
+export default function JoinGroup() {
+  const router = useRouter();
+  const { inviteLink } = router.query;
+  const { isAuthenticated, publicKey } = useWalletConnection();
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const authCookie = getAuthCookie();
+    if (!authCookie) {
+      router.push("/");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (isAuthenticated && inviteLink && publicKey) {
+      joinGroup();
+    }
+  }, [isAuthenticated, inviteLink, publicKey]);
+
+  const joinGroup = async () => {
+    if (joining) return;
+    if (!inviteLink || !publicKey) {
+      setError("Missing invite link or wallet connection. Please try again.");
+      return;
+    }
+
+    setJoining(true);
+    setError(null);
+
+    console.log("inviteLink", inviteLink);
+    console.log("userWallet", publicKey);
+
+    try {
+      const response = await fetch("/api/groups/join", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inviteLink,
+          userWallet: publicKey,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to join group");
+      }
+
+      if (!data.member || !data.member.group_id) {
+        throw new Error("Invalid response from server");
+      }
+
+      router.push(`/dashboard`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div
+          className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
+          <span className="block sm:inline">
+            Please connect your wallet to join the group.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <h1 className="text-3xl font-bold mb-6">Join Group</h1>
+      {error && (
+        <div
+          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
+          <span className="block sm:inline">{error}</span>
+        </div>
+      )}
+      {joining ? (
+        <div className="text-sm text-center text-white">
+          <LoadingAnimation />
+        </div>
+      ) : (
+        <button
+          onClick={joinGroup}
+          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+          disabled={!inviteLink || !publicKey}
+        >
+          Join Group
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+==================================================
+
+File: components/LeaderboardList.js
+Content:
+import UserCard from "./ui/UserCard";
+
+function LeaderboardList({ members, handleGroupClick }) {
+	return (
+		<div className="flex flex-col items-center space-y-2 overflow-x-auto">
+			{members.map((member, index) => (
+				<li
+					key={index}
+					onClick={() => handleGroupClick(member.id)}
+					className="list-none cursor-pointer"
+				>
+					<UserCard
+						id={index + 1}
+						name={member.name}
+						count={member.daily_change_percentage || 0}
+					/>
+				</li>
+			))}
+		</div>
+	);
+}
+
+export default LeaderboardList;
+
+
+==================================================
+
+File: components/LeaderboardTable.js
+Content:
+import { useLeaderboard } from "../hooks/useLeaderboard";
+import { formatCurrency } from "../lib/utils";
+import { shortenAddress } from "../lib/solanaUtils";
+import UserCard from "./ui/UserCard";
+import Loader from "./ui/Loader";
+
+const LeaderboardTable = ({ groupId }) => {
+  const { leaderboard, loading } = useLeaderboard(groupId);
+
+  if (loading) {
+    return (
+      <div>
+        <Loader />
+      </div>
+    );
+  }
+
+  console.log(leaderboard);
+
+  return (
+    <div className="flex items-center justify-center mt-5 overflow-x-auto">
+      {leaderboard.map((entry, index) => (
+        <UserCard
+          key={entry.users.wallet_address}
+          id={index + 1}
+          name={entry.users.username}
+          count={entry.daily_change_percentage}
+        />
+      ))}
+    </div>
+  );
+};
+
+export default LeaderboardTable;
+
+
+==================================================
+
+File: components/EditPartyModal.js
+Content:
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import { X, Copy } from "lucide-react";
+import { generateInviteLink } from "../lib/utils";
+import Loader from "./ui/Loader";
+
+const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
+  const [members, setMembers] = useState([]);
+  const [inviteLink, setInviteLink] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && groupId) {
+      fetchGroupDetails();
+      fetchMembers();
+    }
+  }, [isOpen, groupId]);
+
+  const fetchGroupDetails = async () => {
+    try {
+      const response = await fetch(`/api/groups/${groupId}/details`);
+      if (response.ok) {
+        const data = await response.json();
+        setInviteLink(generateInviteLink(data.invite_link));
+      } else {
+        console.error("Failed to fetch group details");
+      }
+    } catch (error) {
+      console.error("Error fetching group details:", error);
+    }
+  };
+
+  const fetchMembers = async () => {
+    try {
+      const response = await fetch(`/api/groups/${groupId}/members`);
+      if (response.ok) {
+        const data = await response.json();
+        setMembers(data);
+      } else {
+        console.error("Failed to fetch members");
+      }
+    } catch (error) {
+      console.error("Error fetching members:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeMember = async (userId) => {
+    try {
+      const response = await fetch(`/api/groups/${groupId}/members/${userId}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setMembers(members.filter((member) => member.user_id !== userId));
+      } else {
+        console.error("Failed to remove member");
+      }
+    } catch (error) {
+      console.error("Error removing member:", error);
+    }
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
+        {/* <div className="z-20"> */}
+        <button className="flex justify-end w-full z-20 cursor-default">
+          <X
+            size={32}
+            className="p-2 text-white rounded-full bg-dark-blue cursor-pointer"
+            onClick={onClose}
+          />
+        </button>
+        {/* </div> */}
+        {/* heading */}
+        <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
+          <h2 className="text-xl font-medium">Edit Party</h2>
+        </div>
+
+        {/* group name */}
+        <div className="py-5 mb-4 bg-dark-blue rounded-3xl">
+          <input
+            type="text"
+            value={groupName}
+            readOnly
+            className="flex-grow w-full text-xl text-center text-white bg-transparent"
+          />
+        </div>
+
+        {/* invite link */}
+        <div className="flex justify-between w-full px-3 py-4 mb-4 border border-dashed border-white/60 rounded-3xl">
+          <input
+            type="text"
+            readOnly
+            value={inviteLink}
+            className={`flex bg-transparent text-white/60 w-60 md:w-96 truncate focus:outline-none`}
+          />
+          <button
+            onClick={copyInviteLink}
+            className="px-3 py-1 text-white rounded-full bg-primary-pink"
+          >
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+
+        {/* party members */}
+        {loading ? (
+          <p className="text-center text-white">
+            {" "}
+            <Loader />
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {members.map((member) => (
+              <li
+                key={member.user_id}
+                className="flex items-center justify-between px-4 py-5 rounded-3xl bg-dark-blue"
+              >
+                <div className="flex items-center">
+                  <Image
+                    src={member.avatar || "/sample-img.png"}
+                    alt={member.username}
+                    width={32}
+                    height={32}
+                    className="mr-2 rounded-full"
+                  />
+                  <span className="text-white">{member.username}</span>
+                </div>
+                <button onClick={() => removeMember(member.user_id)}>
+                  <X
+                    size={32}
+                    className="p-2 text-white rounded-full bg-primary-blue"
+                  />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default EditPartyModal;
+
+
+==================================================
+
+File: components/UserProfile.js
+Content:
+import { useState, useEffect } from "react";
+import { useWalletConnection } from "../context/WalletConnectionProvider";
+import Image from "next/image";
+import { useRouter } from "next/router";
+import { removeAuthCookie } from "../lib/authCookies";
+import { X } from "lucide-react";
+import LeaderboardList from "./LeaderboardList";
+import Loader from "./ui/Loader";
+
+const UserProfile = ({ onClose }) => {
+  const router = useRouter();
+  const { user, logout } = useWalletConnection();
+  const [leaderboards, setLeaderboards] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchLeaderboards = async () => {
+      if (!user?.wallet_address) return;
+
+      try {
+        const response = await fetch(
+          `/api/user/leaderboards?walletAddress=${user.wallet_address}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setLeaderboards(data);
+        } else {
+          console.error("Failed to fetch leaderboards");
+        }
+      } catch (error) {
+        console.error("Error fetching leaderboards:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboards();
+  }, [user]);
+
+  const handleGroupClick = (groupId) => {
+    router.push(`/group/${groupId}`);
+    onClose();
+  };
+
+  const handleLogout = () => {
+    removeAuthCookie();
+    logout();
+    onClose();
+    router.push("/");
+  };
+
+  if (!user) {
+    return null; // Or some loading state
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
+        <div className="flex-shrink-0 px-1 py-2 sm:p-5">
+          <button className="flex justify-end w-full cursor-default">
+            <X
+              size={32}
+              className="p-2 text-white rounded-full bg-dark-blue cursor-pointer z-20"
+              onClick={onClose}
+            />
+          </button>
+
+          {/* profile pic, username & wallet address */}
+          <div className="flex flex-col items-center gap-2 -mt-5">
+            <Image
+              src="/sample-img.png"
+              alt="User Avatar"
+              width={64}
+              height={64}
+              className="rounded-full"
+            />
+            <div className="text-center">
+              <p className="text-xl text-white">
+                {user.username || "Anonymous"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* leaderboards */}
+        <div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
+          {loading ? (
+            <div className="flex justify-center items-center h-full">
+              <Loader />
+            </div>
+          ) : leaderboards.length > 0 ? (
+            <LeaderboardList
+              members={leaderboards}
+              handleGroupClick={handleGroupClick}
+            />
+          ) : (
+            <p className="text-center text-white">
+              You are not part of any leaderboards yet!
+            </p>
+          )}
+        </div>
+
+        {/* logout button */}
+        <div className="flex-shrink-0 p-5">
+          <button
+            onClick={handleLogout}
+            className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UserProfile;
+
+
+==================================================
+
+File: components/GroupInviteLink.js
+Content:
+import { useState } from "react";
+import { generateInviteLink } from "../lib/utils";
+
+const GroupInviteLink = ({ inviteLink }) => {
+	const [copied, setCopied] = useState(false);
+	const fullInviteLink = generateInviteLink(inviteLink);
+
+	const copyToClipboard = () => {
+		navigator.clipboard.writeText(fullInviteLink);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 2000);
+	};
+
+	return (
+		<div className="flex justify-between w-screen max-w-xs sm:max-w-lg border-2 border-dashed border-white/50 rounded-3xl p-3.5">
+			<input
+				type="text"
+				readOnly
+				value={fullInviteLink}
+				className="flex pl-2 truncate bg-transparent w-80 text-white/60 focus:outline-none"
+			/>
+			<button
+				onClick={copyToClipboard}
+				className="px-3.5 py-2 text-white rounded-full bg-primary-pink"
+			>
+				{copied ? "Copied!" : "Copy"}
+			</button>
+		</div>
+	);
+};
+
+export default GroupInviteLink;
+
+
+==================================================
+
+File: components/WalletConnectButton.js
+Content:
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useEffect, useState } from "react";
+
+const WalletConnectButton = () => {
+  const { publicKey, connected } = useWallet();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return (
+      <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+        Connect Wallet
+      </button>
+    );
+  }
+
+  return (
+    <WalletMultiButton className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+      {connected ? "Wallet Connected" : "Connect Wallet"}
+    </WalletMultiButton>
+  );
+};
+
+export default WalletConnectButton;
+
+
+==================================================
+
+File: components/Navbar.js
+Content:
+import Link from "next/link";
+import Image from "next/image";
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
+import UserProfile from "./UserProfile";
+import WalletConnectButton from "./WalletConnectButton";
+import { useWalletConnection } from "@/context/WalletConnectionProvider";
+
+const Navbar = () => {
+	const { isAuthenticated, logout } = useWalletConnection();
+	const [showDropdown, setShowDropdown] = useState(false);
+	const [showUserProfile, setShowUserProfile] = useState(false);
+
+	const toggleDropdown = () => setShowDropdown(!showDropdown);
+	const toggleUserProfile = () => setShowUserProfile(!showUserProfile);
+
+	return (
+		<nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">
+			<div className="flex items-center justify-start grow shrink basis-0 h-9">
+				<Link href="/" className="text-2xl text-center text-white">
+					MoonParty
+				</Link>
+				<ChevronDown className="text-white" size={30} />
+			</div>
+			<button onClick={toggleUserProfile} className="focus:outline-none">
+				<Image
+					width={40}
+					height={40}
+					alt="User Avatar"
+					src="/sample-img.png"
+					className="w-10 h-10 rounded-full"
+				/>
+			</button>
+
+			{showDropdown && (
+				<div className="absolute right-0 z-10 w-48 py-1 mt-2 bg-white rounded-md shadow-lg">
+					<WalletConnectButton />
+					{isAuthenticated && (
+						<button
+							onClick={logout}
+							className="block w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100"
+						>
+							Logout
+						</button>
+					)}
+				</div>
+			)}
+
+			{showUserProfile && <UserProfile onClose={toggleUserProfile} />}
+		</nav>
+	);
+};
+
+export default Navbar;
+
+
+==================================================
+
+File: components/Layout.js
+Content:
+import Head from "next/head";
+import Navbar from "./Navbar";
+
+const Layout = ({ children }) => {
+	return (
+		<>
+			<Head>
+				<title>Solana Wallet Leaderboard</title>
+				<meta
+					name="description"
+					content="Track your Solana wallet performance with friends"
+				/>
+				<link rel="icon" href="/favicon.ico" />
+			</Head>
+			<div className="w-screen h-screen p-2 diamond-gradient">
+				<div className="w-full h-full bg-primary-blue">
+					<Navbar />
+					<main className="mx-auto">{children}</main>
+				</div>
+			</div>
+		</>
+	);
+};
+
+export default Layout;
+
+
+==================================================
+
+File: components/AssetSnapshot.js
+Content:
+import { useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { supabase } from "../lib/supabase";
+import { formatCurrency } from "../lib/utils";
+
+const AssetSnapshot = ({ groupId, onSnapshotTaken }) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { publicKey } = useWallet();
+
+  const takeSnapshot = async () => {
+    if (!publicKey) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // In a real application, you would fetch the actual wallet balance here
+      const mockBalance = Math.random() * 10000; // Mock balance for demonstration
+
+      const { data, error } = await supabase.from("asset_snapshots").insert({
+        user_id: publicKey.toString(),
+        group_id: groupId,
+        total_value: mockBalance,
+        snapshot_date: new Date().toISOString().split("T")[0], // Current date
+      });
+
+      if (error) throw error;
+
+      onSnapshotTaken(data);
+    } catch (err) {
+      setError("Failed to take snapshot. Please try again.");
+      console.error("Error taking snapshot:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <h3 className="text-lg font-medium text-gray-900">
+        Todays Asset Snapshot
+      </h3>
+      <button
+        onClick={takeSnapshot}
+        disabled={loading}
+        className="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+      >
+        {loading ? "Taking Snapshot..." : "Take Snapshot"}
+      </button>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </div>
+  );
+};
+
+export default AssetSnapshot;
+
+
+==================================================
+
+File: components/MembersList.js
+Content:
+import UserCard from "./ui/UserCard";
+
+function MembersList({ members }) {
+  return (
+    <div className="flex flex-col items-center space-y-2 overflow-x-auto">
+      {members.map((member, index) => (
+        <li key={index} className="list-none cursor-pointer">
+          {console.log(member)}
+          <UserCard id={index + 1} name={member.users.username} count={0} />
+        </li>
+      ))}
+    </div>
+  );
+}
+
+export default MembersList;
+
+
+==================================================
+
+File: components/TopUsers.js
+Content:
+import React from "react";
+
+function TopUsers({ members }) {
+  // Check if members is an array and has elements
+  if (!Array.isArray(members) || members.length === 0) {
+    return <div className="text-white text-center">No members to display</div>;
+  }
+
+  // Sort members by daily_change_percentage in descending order
+  const sortedMembers = [...members].sort(
+    (a, b) => b.daily_change_percentage - a.daily_change_percentage
+  );
+
+  // Get top 3 members or all if less than 3
+  const topThree = sortedMembers.slice(0, 3);
+
+  // Define colors and sizes for each position
+  const positions = [
+    { color: "#ffb600", size: "w-28 h-28", numberSize: "w-8 h-8" },
+    { color: "#0099ff", size: "w-20 h-20", numberSize: "w-5 h-5" },
+    { color: "#ff00fa", size: "w-20 h-20", numberSize: "w-5 h-5" },
+  ];
+
+  // Function to render each user
+  const renderUser = (user, index) => {
+    const position = positions[index];
+    return (
+      <div key={user.user_id} className="flex flex-col items-center">
+        <div className="relative">
+          <div
+            className={`flex items-center justify-center border-2 rounded-full ${position.size} bg-dark-blue`}
+            style={{ borderColor: position.color }}
+          >
+            <div
+              className={`absolute flex items-center justify-center ${position.numberSize} px-3 py-3 rounded-full -left-2 top-2`}
+              style={{ backgroundColor: position.color }}
+            >
+              <span className="text-base text-white">{index + 1}</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 text-lg font-bold text-white">
+          {user.users?.username || "Unknown User"}
+        </div>
+        <div
+          className="px-3.5 py-2 mt-2 text-base font-bold text-white rounded-3xl"
+          style={{ backgroundColor: position.color }}
+        >
+          {user.daily_change_percentage >= 0 ? "+" : "-"}{" "}
+          {Math.abs(user.daily_change_percentage).toFixed(2)}%
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex items-baseline justify-center gap-5">
+      {topThree.map((user, index) => renderUser(user, index))}
+    </div>
+  );
+}
+
+export default TopUsers;
+
+
+==================================================
+
+File: components/ui/PartyCard.js
+Content:
+import { useState } from "react";
+import Link from "next/link";
+import { Pencil } from "lucide-react";
+import EditPartyModal from "../EditPartyModal";
+
+function PartyCard({ group }) {
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  return (
+    <>
+      <div className="flex items-center justify-between w-screen max-w-xs p-3.5 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink">
+        <Link href={`/group/${group.id}`}>
+          <div className="flex flex-col justify-center">
+            <span className="text-xl">{group.name}</span>
+            <span className="text-base text-white/50">
+              {group.members_count} members
+            </span>
+          </div>
+        </Link>
+        <div>
+          <button
+            className="p-2 rounded-full bg-primary-blue"
+            onClick={() => setIsEditModalOpen(true)}
+          >
+            <Pencil />
+          </button>
+        </div>
+      </div>
+      <EditPartyModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        groupId={group.id}
+        groupName={group.name}
+      />
+    </>
+  );
+}
+
+export default PartyCard;
+
+//   md:max-w-lg w-screen max-w-md
+
+
+==================================================
+
+File: components/ui/CreateBtn.js
+Content:
+import React from "react";
+import Loader from "./Loader";
+
+const CreateBtn = ({ onClick, loading, text }) => {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-screen max-w-md md:max-w-lg py-5"
+    >
+      {loading ? (
+        <div className="flex items-center justify-center w-full h-full">
+          <Loader size={24} /> {/* Adjust size as needed */}
+        </div>
+      ) : (
+        <span className="text-center text-white text-md">{text}</span>
+      )}
+    </button>
+  );
+};
+
+export default CreateBtn;
+
+
+==================================================
+
+File: components/ui/Loader.js
+Content:
+const LoadingAnimation = ({ size = 24 }) => {
+  return (
+    <div className="flex items-center justify-center">
+      <svg
+        className={`animate-spin`}
+        width={size}
+        height={size}
+        viewBox="0 0 100 100"
+      >
+        <circle
+          className="text-gray-300"
+          strokeWidth="8"
+          stroke="currentColor"
+          fill="transparent"
+          r="42"
+          cx="50"
+          cy="50"
+        />
+        <circle
+          className="text-yellow-400"
+          strokeWidth="8"
+          strokeDasharray="66 198"
+          strokeDashoffset="198"
+          strokeLinecap="round"
+          stroke="currentColor"
+          fill="transparent"
+          r="42"
+          cx="50"
+          cy="50"
+        >
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 50 50"
+            to="360 50 50"
+            dur="1.5s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      </svg>
+    </div>
+  );
+};
+
+export default LoadingAnimation;
+
+
+==================================================
+
+File: components/ui/UserCard.js
+Content:
+import Image from "next/image";
+
+function UserCard({ id, src, name, count }) {
+  const isPositive = count >= 0;
+  const formattedCount = Math.abs(count).toFixed(2);
+
+  return (
+    <div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-lg">
+      <div className="flex items-center gap-3.5">
+        <span className="text-xl text-center text-white/60">{id}</span>
+        <Image
+          width={40}
+          height={40}
+          alt="User Avatar"
+          src={src || "/sample-img.png"}
+          className="w-12 h-12 rounded-full"
+        />
+        <p className="text-xl">{name}</p>
+      </div>
+
+      <div
+        className={`px-3.5 py-2 ${
+          isPositive ? "bg-primary-blue" : "bg-red-500"
+        } rounded-full justify-start items-center gap-3.5 flex`}
+      >
+        <span>
+          {isPositive ? "+" : "-"} {formattedCount}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default UserCard;
+
+
+==================================================
+
+File: styles/globals.css
+Content:
+@font-face {
+  font-family: 'SF Pro';
+  src: url('/fonts/SFPROREGULAR.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'SF Pro';
+  src: url('/fonts/SFPROBOLD.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Reem+Kufi+Fun:wght@400..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles to hide scrollbars */
+html,
+body {
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+  /* Chrome, Safari, and Opera */
+}
+
+body {
+  font-family: 'SF Pro', 'Helvetica', sans-serif;
+}
+
+.diamond-gradient {
+  background: linear-gradient(115deg,
+      #571CFF,
+      #FF0057,
+      #571CFF,
+      #FF0057);
+}
+
+/* Apply no-scrollbar to all elements */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+@layer utilities {
+  /* Keep the no-scrollbar utility for specific use if needed */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+==================================================
+
+File: lib/authCookies.js
+Content:
+import Cookies from "js-cookie";
+
+const AUTH_COOKIE_NAME = "moonparty_auth";
+
+export const setAuthCookie = (user) => {
+  Cookies.set(AUTH_COOKIE_NAME, JSON.stringify(user), { expires: 7 }); // Expires in 7 days
+};
+
+export const getAuthCookie = (options = {}) => {
+  if (typeof window !== "undefined") {
+    // Client-side
+    const cookie = Cookies.get(AUTH_COOKIE_NAME);
+    return cookie ? JSON.parse(cookie) : null;
+  } else {
+    // Server-side
+    const { req } = options;
+    const cookie = req.cookies[AUTH_COOKIE_NAME];
+    return cookie ? JSON.parse(cookie) : null;
+  }
+};
+
+export const removeAuthCookie = () => {
+  Cookies.remove(AUTH_COOKIE_NAME);
+};
+
+
+==================================================
+
+File: lib/updateDailyPnL.js
+Content:
+import { supabase } from "./supabase";
+import axios from "axios";
+
+async function getWalletBalance(walletAddress) {
+  try {
+    const response = await axios.get(
+      `https://openapiv1.coinstats.app/wallet/balance?address=${walletAddress}&connectionId=solana`,
+      {
+        headers: {
+          "X-API-KEY": process.env.NEXT_PUBLIC_COINSTATS_API_KEY,
+          accept: "application/json",
+        },
+      }
+    );
+
+    const solData = response.data.find((coin) => coin.coinId === "solana");
+    return {
+      amount: solData.amount,
+      price: solData.price,
+    };
+  } catch (error) {
+    console.error("Error fetching wallet balance:", error);
+    throw error;
+  }
+}
+
+export async function updateDailyPnL(specificUserId = null) {
+  try {
+    let users;
+    if (specificUserId) {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, wallet_address")
+        .eq("id", specificUserId);
+      if (error) throw error;
+      users = data;
+    } else {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, wallet_address");
+      if (error) throw error;
+      users = data;
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+
+    for (const user of users) {
+      const { amount: solAmount, price: solPrice } = await getWalletBalance(
+        user.wallet_address
+      );
+      const currentValueUSD = solAmount * solPrice;
+
+      // Insert or update asset snapshot
+      const { error: snapshotError } = await supabase
+        .from("asset_snapshots")
+        .upsert(
+          {
+            user_id: user.id,
+            total_value: currentValueUSD,
+            sol_amount: solAmount,
+            sol_price_usd: solPrice,
+            snapshot_date: today,
+          },
+          {
+            onConflict: "user_id, snapshot_date",
+          }
+        );
+
+      if (snapshotError) throw snapshotError;
+
+      // Get yesterday's snapshot
+      const yesterday = new Date(new Date().setDate(new Date().getDate() - 1))
+        .toISOString()
+        .split("T")[0];
+      const { data: yesterdaySnapshot } = await supabase
+        .from("asset_snapshots")
+        .select("total_value, sol_amount, sol_price_usd")
+        .eq("user_id", user.id)
+        .eq("snapshot_date", yesterday)
+        .single();
+
+      let yesterdayValueUSD = currentValueUSD;
+      if (yesterdaySnapshot) {
+        yesterdayValueUSD = yesterdaySnapshot.total_value;
+      }
+
+      // Calculate daily change
+      const dailyChangeValue = currentValueUSD - yesterdayValueUSD;
+      const dailyChangePercentage =
+        yesterdayValueUSD !== 0
+          ? (dailyChangeValue / yesterdayValueUSD) * 100
+          : 0;
+
+      // Fetch all groups the user is a member of
+      const { data: userGroups } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", user.id);
+
+      for (const { group_id } of userGroups) {
+        // Insert or update daily ranking for each group
+        await supabase.from("daily_rankings").upsert(
+          {
+            user_id: user.id,
+            group_id,
+            ranking_date: today,
+            current_balance: currentValueUSD,
+            sol_amount: solAmount,
+            sol_price_usd: solPrice,
+            daily_change_percentage: dailyChangePercentage,
+            daily_change_value: dailyChangeValue,
+            rank: 0, // We'll update ranks in a separate step
+          },
+          {
+            onConflict: "user_id, group_id, ranking_date",
+          }
+        );
+      }
+    }
+
+    // Only update ranks if we're updating all users
+    if (!specificUserId) {
+      // Update ranks for each group
+      const { data: groups } = await supabase
+        .from("leaderboard_groups")
+        .select("id");
+
+      for (const { id: group_id } of groups) {
+        const { data: groupRankings } = await supabase
+          .from("daily_rankings")
+          .select("id, daily_change_percentage")
+          .eq("group_id", group_id)
+          .eq("ranking_date", today)
+          .order("daily_change_percentage", { ascending: false });
+
+        for (let i = 0; i < groupRankings.length; i++) {
+          await supabase
+            .from("daily_rankings")
+            .update({ rank: i + 1 })
+            .eq("id", groupRankings[i].id);
+        }
+      }
+    }
+
+    console.log("Daily P&L update completed successfully");
+  } catch (error) {
+    console.error("Error updating daily P&L:", error);
+    throw error;
+  }
+}
+
+
+==================================================
+
+File: lib/solanaUtils.js
+Content:
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import {
+  ConnectionProvider,
+  WalletProvider,
+} from "@solana/wallet-adapter-react";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
+import { clusterApiUrl } from "@solana/web3.js";
+import { useMemo } from "react";
+
+// Import the styles for the wallet modal
+import "@solana/wallet-adapter-react-ui/styles.css";
+
+export const SolanaProvider = ({ children }) => {
+  const network = WalletAdapterNetwork.Devnet;
+  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+
+  const wallets = useMemo(
+    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
+    [network]
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>{children}</WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
+};
+
+export const shortenAddress = (address) => {
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+};
+
+
+==================================================
+
+File: lib/utils.js
+Content:
+export const calculateDailyChange = (previousValue, currentValue) => {
+  if (previousValue === 0) return 0;
+  return ((currentValue - previousValue) / previousValue) * 100;
+};
+
+export const formatCurrency = (value) => {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(value);
+};
+
+export const generateInviteLink = (groupId) => {
+  return `${process.env.NEXT_PUBLIC_BASE_URL}/group/join/${groupId}`;
+};
+
+
+==================================================
+
+File: lib/supabase.js
+Content:
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+
+==================================================
+
+File: context/WalletConnectionProvider.js
+Content:
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletAuth } from "../hooks/useWalletAuth";
+import {
+  getAuthCookie,
+  setAuthCookie,
+  removeAuthCookie,
+} from "../lib/authCookies";
+
+const WalletConnectionContext = createContext();
+
+export const WalletConnectionProvider = ({ children }) => {
+  const { publicKey, connected, disconnect } = useWallet();
+  const {
+    user,
+    checkWalletExists,
+    loginUser,
+    logout: authLogout,
+  } = useWalletAuth();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const checkAndSetAuthState = useCallback(async () => {
+    const authCookie = getAuthCookie();
+    if (authCookie && connected && publicKey) {
+      const existingUser = await checkWalletExists(publicKey.toString());
+      if (existingUser) {
+        await loginUser(existingUser);
+        setIsAuthenticated(true);
+        setAuthCookie(existingUser);
+        return { isAuthenticated: true, publicKey: publicKey.toString() };
+      }
+    }
+    setIsAuthenticated(false);
+    return { isAuthenticated: false, publicKey: null };
+  }, [connected, publicKey, checkWalletExists, loginUser]);
+
+  useEffect(() => {
+    checkAndSetAuthState();
+  }, [checkAndSetAuthState]);
+
+  const logout = useCallback(() => {
+    disconnect();
+    authLogout();
+    removeAuthCookie();
+    setIsAuthenticated(false);
+  }, [disconnect, authLogout]);
+
+  const value = {
+    isAuthenticated,
+    user,
+    publicKey: publicKey?.toString(),
+    logout,
+    checkAndSetAuthState,
+  };
+
+  return (
+    <WalletConnectionContext.Provider value={value}>
+      {children}
+    </WalletConnectionContext.Provider>
+  );
+};
+
+export const useWalletConnection = () => {
+  const context = useContext(WalletConnectionContext);
+  if (context === undefined) {
+    throw new Error(
+      "useWalletConnection must be used within a WalletConnectionProvider"
+    );
+  }
+  return context;
+};
+
+
+==================================================
+

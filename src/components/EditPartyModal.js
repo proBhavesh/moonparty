@@ -73,7 +73,6 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
-        {/* <div className="z-20"> */}
         <button className="flex justify-end w-full z-20 cursor-default">
           <X
             size={32}
@@ -81,13 +80,10 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
             onClick={onClose}
           />
         </button>
-        {/* </div> */}
-        {/* heading */}
         <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
           <h2 className="text-xl font-medium">Edit Party</h2>
         </div>
 
-        {/* group name */}
         <div className="py-5 mb-4 bg-dark-blue rounded-3xl">
           <input
             type="text"
@@ -97,7 +93,6 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           />
         </div>
 
-        {/* invite link */}
         <div className="flex justify-between w-full px-3 py-4 mb-4 border border-dashed border-white/60 rounded-3xl">
           <input
             type="text"
@@ -113,10 +108,8 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           </button>
         </div>
 
-        {/* party members */}
         {loading ? (
           <p className="text-center text-white">
-            {" "}
             <Loader />
           </p>
         ) : (
@@ -128,7 +121,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
               >
                 <div className="flex items-center">
                   <Image
-                    src={member.avatar || "/sample-img.png"}
+                    src={member.avatar_url || "/sample-img.png"}
                     alt={member.username}
                     width={32}
                     height={32}

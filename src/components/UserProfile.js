@@ -6,6 +6,7 @@ import { removeAuthCookie } from "../lib/authCookies";
 import { X } from "lucide-react";
 import LeaderboardList from "./LeaderboardList";
 import Loader from "./ui/Loader";
+import { shortenAddress } from "../lib/solanaUtils";
 
 const UserProfile = ({ onClose }) => {
   const router = useRouter();
@@ -50,7 +51,7 @@ const UserProfile = ({ onClose }) => {
   };
 
   if (!user) {
-    return null; // Or some loading state
+    return null;
   }
 
   return (
@@ -65,10 +66,9 @@ const UserProfile = ({ onClose }) => {
             />
           </button>
 
-          {/* profile pic, username & wallet address */}
           <div className="flex flex-col items-center gap-2 -mt-5">
             <Image
-              src="/sample-img.png"
+              src={user.avatar_url || "/sample-img.png"}
               alt="User Avatar"
               width={64}
               height={64}
@@ -78,11 +78,13 @@ const UserProfile = ({ onClose }) => {
               <p className="text-xl text-white">
                 {user.username || "Anonymous"}
               </p>
+              <p className="text-sm text-white/60">
+                {shortenAddress(user.wallet_address)}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* leaderboards */}
         <div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
           {loading ? (
             <div className="flex justify-center items-center h-full">
@@ -100,7 +102,6 @@ const UserProfile = ({ onClose }) => {
           )}
         </div>
 
-        {/* logout button */}
         <div className="flex-shrink-0 p-5">
           <button
             onClick={handleLogout}

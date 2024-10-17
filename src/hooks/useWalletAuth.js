@@ -24,7 +24,7 @@ export const useWalletAuth = () => {
   }, []);
 
   const authenticateUser = useCallback(
-    async (username) => {
+    async (username, avatarUrl) => {
       if (!publicKey || !signMessage || !username) {
         console.log(
           "Cannot authenticate: missing publicKey, signMessage, or username"
@@ -43,10 +43,11 @@ export const useWalletAuth = () => {
             {
               wallet_address: publicKey.toString(),
               username: username,
+              avatar_url: avatarUrl,
             },
             {
               onConflict: "wallet_address",
-              update: { username: username },
+              update: { username: username, avatar_url: avatarUrl },
             }
           )
           .select()

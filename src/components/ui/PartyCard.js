@@ -1,14 +1,26 @@
 import { useState } from "react";
-import Link from "next/link";
 import { Pencil } from "lucide-react";
 import EditPartyModal from "../EditPartyModal";
+import Link from "next/link";
 
-function PartyCard({ group }) {
+function PartyCard({ group, onClick }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onClick(group);
+  };
+
+  const handleEditClick = (e) => {
+    e.stopPropagation();
+    setIsEditModalOpen(true);
+  };
 
   return (
     <>
-      <div className="flex items-center justify-between w-screen max-w-xs p-3.5 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink">
+      <div
+        className="flex items-center justify-between w-screen max-w-xs p-3.5 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink cursor-pointer"
+        onClick={handleClick}
+      >
         <Link href={`/group/${group.id}`}>
           <div className="flex flex-col justify-center">
             <span className="text-xl">{group.name}</span>
@@ -20,7 +32,7 @@ function PartyCard({ group }) {
         <div>
           <button
             className="p-2 rounded-full bg-primary-blue"
-            onClick={() => setIsEditModalOpen(true)}
+            onClick={handleEditClick}
           >
             <Pencil />
           </button>
@@ -31,11 +43,10 @@ function PartyCard({ group }) {
         onClose={() => setIsEditModalOpen(false)}
         groupId={group.id}
         groupName={group.name}
+        groupMembers={group.group_members}
       />
     </>
   );
 }
 
 export default PartyCard;
-
-//   md:max-w-lg w-screen max-w-md

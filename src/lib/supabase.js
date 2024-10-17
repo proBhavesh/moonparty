@@ -8,3 +8,27 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Configure Supabase storage
+const AVATAR_BUCKET = "avatars";
+
+export const uploadAvatar = async (file, path) => {
+  const { data, error } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, file);
+
+  if (error) throw error;
+
+  return data;
+};
+
+export const getAvatarUrl = (path) => {
+  const {
+    data: { publicUrl },
+    error,
+  } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+
+  if (error) throw error;
+
+  return publicUrl;
+};

@@ -59,7 +59,7 @@ export default function JoinGroup() {
         throw new Error("Invalid response from server");
       }
 
-      router.push(`/dashboard`);
+      router.push(`/group/${data.member.group_id}`);
     } catch (err) {
       setError(err.message);
     } finally {

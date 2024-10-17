@@ -33,7 +33,8 @@ export default async function handler(req, res) {
         *,
         users (
           wallet_address,
-          username
+          username,
+          avatar_url
         )
       `
       )

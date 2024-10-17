@@ -15,7 +15,8 @@ export default async function handler(req, res) {
           users (
             id,
             username,
-            wallet_address
+            wallet_address,
+            avatar_url
           )
         `
         )
@@ -33,12 +34,10 @@ export default async function handler(req, res) {
       res.status(200).json(members);
     } catch (error) {
       console.error("Error fetching group members:", error);
-      res
-        .status(500)
-        .json({
-          message: "Error fetching group members",
-          error: error.message,
-        });
+      res.status(500).json({
+        message: "Error fetching group members",
+        error: error.message,
+      });
     }
   } else {
     res.setHeader("Allow", ["GET"]);

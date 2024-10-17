@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-function UserCard({ id, src, name, count }) {
+function UserCard({ id, avatar, name, count }) {
   const isPositive = count >= 0;
   const formattedCount = Math.abs(count).toFixed(2);
 
@@ -12,7 +12,7 @@ function UserCard({ id, src, name, count }) {
           width={40}
           height={40}
           alt="User Avatar"
-          src={src || "/sample-img.png"}
+          src={avatar || "/sample-img.png"}
           className="w-12 h-12 rounded-full"
         />
         <p className="text-xl">{name}</p>

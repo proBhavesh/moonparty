@@ -15,14 +15,13 @@ const LeaderboardTable = ({ groupId }) => {
     );
   }
 
-  console.log(leaderboard);
-
   return (
     <div className="flex items-center justify-center mt-5 overflow-x-auto">
       {leaderboard.map((entry, index) => (
         <UserCard
           key={entry.users.wallet_address}
           id={index + 1}
+          avatar={entry.users.avatar_url}
           name={entry.users.username}
           count={entry.daily_change_percentage}
         />
