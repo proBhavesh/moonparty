@@ -16,7 +16,7 @@ const Layout = ({ children }) => {
         />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <div className="w-screen h-screen p-2 diamond-gradient">
+      <div className="w-screen h-screen p-1 diamond-gradient">
         <div className="w-full h-full bg-primary-blue">
           {!isHomePage && <Navbar />}
           <main className="mx-auto">{children}</main>
