@@ -17,6 +17,10 @@ module.exports = {
 				sans: ["Helvetica Neue", "Helvetica", "Arial", "sans-serif"],
 				"reem-kufi-fun": ["Reem Kufi Fun", "sans-serif"],
 			},
+			screens: {
+				xs: "350px",
+				sm: "400px",
+			},
 		},
 	},
 	plugins: [],
