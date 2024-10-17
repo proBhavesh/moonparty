@@ -4,9 +4,10 @@ import { ChevronDown } from "lucide-react";
 import UserProfile from "./UserProfile";
 import PartySwitcher from "./PartySwitcher";
 import { useWalletConnection } from "@/context/WalletConnectionProvider";
-import { shortenAddress } from "@/lib/solanaUtils";
+import { useRouter } from "next/router";
 
 const Navbar = () => {
+  const router = useRouter();
   const { user } = useWalletConnection();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
@@ -24,9 +25,10 @@ const Navbar = () => {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
       setUserParties(data);
-      if (data.length > 0) {
-        const randomParty = data[Math.floor(Math.random() * data.length)];
-        setSelectedParty(randomParty);
+      if (data.length > 0 && !selectedParty) {
+        const firstParty = data[0]; // Select the first party instead of a random one
+        setSelectedParty(firstParty);
+        router.push(`/group/${firstParty.id}`);
       }
     } catch (error) {
       console.error("Error fetching user parties:", error);
@@ -39,6 +41,7 @@ const Navbar = () => {
   const handlePartySelect = (party) => {
     setSelectedParty(party);
     setShowPartySwitcher(false);
+    router.push(`/group/${party.id}`);
   };
 
   return (
