@@ -1,40 +1,3 @@
-File: middleware.js
-Content:
-import { NextResponse } from "next/server";
-import { getAuthCookie } from "./lib/authCookies";
-
-export function middleware(request) {
-  const authCookie = getAuthCookie({ req: request });
-
-  // List of paths that don't require authentication
-  const publicPaths = ["/", "/api/"];
-
-  if (
-    !authCookie &&
-    !publicPaths.some((path) => request.nextUrl.pathname.startsWith(path))
-  ) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
-  ],
-};
-
-
-==================================================
-
 File: hooks/useWalletAuth.js
 Content:
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -269,223 +232,223 @@ import { X } from "lucide-react";
 import LoadingAnimation from "@/components/ui/Loader";
 import { supabase } from "../lib/supabase";
 import Image from "next/image";
+import { sanitizeFileName } from "../lib/utils";
 
 const WalletConnectButton = dynamic(
-	() => import("../components/WalletConnectButton"),
-	{ ssr: false }
+  () => import("../components/WalletConnectButton"),
+  { ssr: false }
 );
 
 export default function Home() {
-	const router = useRouter();
-	const { isAuthenticated, user, publicKey } = useWalletConnection();
-	const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
-	const [username, setUsername] = useState("");
-	const [walletChecked, setWalletChecked] = useState(false);
-	const [isCreating, setIsCreating] = useState(false);
-	const [avatarFile, setAvatarFile] = useState(null);
-	const [avatarPreview, setAvatarPreview] = useState(null);
+  const router = useRouter();
+  const { isAuthenticated, user, publicKey, checkAndSetAuthState } =
+    useWalletConnection();
+  const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
+  const [username, setUsername] = useState("");
+  const [walletChecked, setWalletChecked] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
 
-	const checkWallet = useCallback(async () => {
-		if (publicKey && !walletChecked) {
-			const existingUser = await checkWalletExists(publicKey);
-			if (existingUser) {
-				await loginUser(existingUser);
-				redirectToFirstParty(existingUser.wallet_address);
-			}
-			setWalletChecked(true);
-		}
-	}, [publicKey, walletChecked, checkWalletExists, loginUser]);
+  const checkWallet = useCallback(async () => {
+    if (publicKey && !walletChecked) {
+      const existingUser = await checkWalletExists(publicKey);
+      if (existingUser) {
+        await loginUser(existingUser);
+        await checkAndSetAuthState();
+      }
+      setWalletChecked(true);
+    }
+  }, [
+    publicKey,
+    walletChecked,
+    checkWalletExists,
+    loginUser,
+    checkAndSetAuthState,
+  ]);
 
-	useEffect(() => {
-		checkWallet();
-	}, [checkWallet]);
+  useEffect(() => {
+    checkWallet();
+  }, [checkWallet]);
 
-	useEffect(() => {
-		if (isAuthenticated && user) {
-			redirectToFirstParty(user.wallet_address);
-		}
-	}, [isAuthenticated, user]);
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      redirectToFirstParty(user.wallet_address);
+    }
+  }, [isAuthenticated, user]);
 
-	const redirectToFirstParty = async (walletAddress) => {
-		try {
-			const response = await fetch(`/api/dashboard/${walletAddress}`);
-			const parties = await response.json();
-			if (parties.length > 0) {
-				router.push(`/group/${parties[0].id}`);
-			} else {
-				// If no parties exist, redirect to dashboard or show a message
-				router.push("/create-group");
-			}
-		} catch (error) {
-			console.error("Error fetching user parties:", error);
-			router.push("/dashboard"); // Fallback to dashboard in case of error
-		}
-	};
+  const redirectToFirstParty = async (walletAddress) => {
+    try {
+      const response = await fetch(`/api/dashboard/${walletAddress}`);
+      const parties = await response.json();
+      if (parties.length > 0) {
+        router.push(`/group/${parties[0].id}`);
+      } else {
+        router.push("/create-group");
+      }
+    } catch (error) {
+      console.error("Error fetching user parties:", error);
+      router.push("/dashboard");
+    }
+  };
 
-	const handleAvatarChange = (e) => {
-		const file = e.target.files[0];
-		if (file) {
-			setAvatarFile(file);
-			setAvatarPreview(URL.createObjectURL(file));
-		}
-	};
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
 
-	const handleCreate = async () => {
-		if (username && publicKey && avatarFile) {
-			setIsCreating(true);
-			try {
-				// Upload avatar to Supabase Storage
-				const { data: uploadData, error: uploadError } =
-					await supabase.storage
-						.from("avatars")
-						.upload(`${publicKey}/${avatarFile.name}`, avatarFile);
+  const handleCreate = async () => {
+    if (username && publicKey && avatarFile) {
+      setIsCreating(true);
+      try {
+        const sanitizedFileName = sanitizeFileName(avatarFile.name);
+        const fileExt = sanitizedFileName.split(".").pop();
+        const fileName = `${Date.now()}_${sanitizedFileName}`;
 
-				if (uploadError) throw uploadError;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(`${publicKey}/${fileName}`, avatarFile, {
+            contentType: `image/${fileExt}`,
+          });
 
-				// Get public URL of the uploaded avatar
-				const {
-					data: { publicUrl },
-				} = supabase.storage
-					.from("avatars")
-					.getPublicUrl(uploadData.path);
+        if (uploadError) throw uploadError;
 
-				// Create user with avatar URL
-				const user = await authenticateUser(username, publicUrl);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("avatars").getPublicUrl(uploadData.path);
 
-				if (user) {
-					// Create a party for the user
-					await createParty(user.id, username);
-					redirectToFirstParty(user.wallet_address);
-				} else {
-					throw new Error("Failed to create user");
-				}
-			} catch (error) {
-				console.error("Error creating user or party:", error);
-				setIsCreating(false);
-			}
-		}
-	};
+        const newUser = await authenticateUser(username, publicUrl);
 
-	const createParty = async (userId, partyName) => {
-		try {
-			const response = await fetch("/api/groups/create", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					name: partyName,
-					creatorWallet: publicKey,
-				}),
-			});
+        if (newUser) {
+          await createParty(newUser.id, username);
+          await checkAndSetAuthState();
+          redirectToFirstParty(newUser.wallet_address);
+        } else {
+          throw new Error("Failed to create user");
+        }
+      } catch (error) {
+        console.error("Error creating user or party:", error);
+        setIsCreating(false);
+      }
+    }
+  };
 
-			if (!response.ok) {
-				throw new Error("Failed to create party");
-			}
+  const createParty = async (userId, partyName) => {
+    try {
+      const response = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: partyName,
+          creatorWallet: publicKey,
+        }),
+      });
 
-			const data = await response.json();
-			return data;
-		} catch (error) {
-			console.error("Error creating party:", error);
-			throw error;
-		}
-	};
+      if (!response.ok) {
+        throw new Error("Failed to create party");
+      }
 
-	const handleDisconnect = () => {
-		// Implement wallet disconnection logic here
-		setWalletChecked(false);
-	};
+      return await response.json();
+    } catch (error) {
+      console.error("Error creating party:", error);
+      throw error;
+    }
+  };
 
-	return (
-		<div className="flex flex-col items-center justify-center h-full text-white">
-			<div className="flex flex-col items-center w-full max-w-xs text-center sm:max-w-sm md:max-w-lg">
-				<h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
-					🌝 moonparty
-				</h1>
+  const handleDisconnect = () => {
+    setWalletChecked(false);
+    // Add any additional disconnect logic here
+  };
 
-				{!publicKey ? (
-					<div className="mb-4">
-						<WalletConnectButton />
-					</div>
-				) : walletChecked && !user ? (
-					<>
-						<input
-							type="text"
-							placeholder="Add a username..."
-							value={username}
-							onChange={(e) => setUsername(e.target.value)}
-							className="w-full py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
-						/>
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-white">
+      <div className="flex flex-col items-center w-full max-w-xs text-center sm:max-w-sm md:max-w-lg">
+        <h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
+          🌝 moonparty
+        </h1>
 
-						{/* avatar uploader */}
-						<div className="flex justify-center mb-4">
-							<input
-								type="file"
-								accept="image/*"
-								onChange={handleAvatarChange}
-								className="hidden"
-								id="avatar-upload"
-							/>
-							<label
-								htmlFor="avatar-upload"
-								className="cursor-pointer"
-							>
-								<Image
-									width={100}
-									height={100}
-									alt={"avatar image"}
-									src={"/avatar-default.svg"}
-								/>
-							</label>
-						</div>
+        {!publicKey ? (
+          <div className="mb-4">
+            <WalletConnectButton />
+          </div>
+        ) : walletChecked && !user ? (
+          <>
+            <input
+              type="text"
+              placeholder="Add a username..."
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+            />
 
-						{/* wallet address */}
-						<div className="relative flex w-full gap-5 p-4 mb-4 text-white border-2 border-white border-dashed rounded-3xl">
-							<div className="flex w-full">
-								<input
-									type="text"
-									value={publicKey}
-									readOnly
-									className="w-full mr-3 overflow-hidden bg-transparent focus:outline-none"
-								/>
-							</div>
-							<div>
-								<button
-									className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
-									onClick={handleDisconnect}
-								>
-									<X size={20} />
-								</button>
-							</div>
-						</div>
+            {/* avatar uploader */}
+            <div className="flex justify-center mb-4">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+                id="avatar-upload"
+              />
+              <label htmlFor="avatar-upload" className="cursor-pointer">
+                <Image
+                  width={100}
+                  height={100}
+                  alt={"avatar image"}
+                  src={avatarPreview || "/avatar-default.svg"}
+                  className="rounded-full object-cover"
+                />
+              </label>
+            </div>
 
-						{/* create button */}
-						<div className="flex justify-center w-full">
-							<button
-								onClick={handleCreate}
-								disabled={
-									!username || !avatarFile || isCreating
-								}
-								className={`w-full p-4 rounded-3xl ${
-									username && avatarFile && !isCreating
-										? "bg-primary-pink hover:bg-primary-pink/90"
-										: "bg-dark-blue cursor-not-allowed"
-								} transition-colors duration-300 flex justify-center items-center`}
-							>
-								{isCreating ? (
-									<LoadingAnimation size={24} />
-								) : (
-									"Create"
-								)}
-							</button>
-						</div>
-					</>
-				) : (
-					<p>Checking wallet...</p>
-				)}
-			</div>
-		</div>
-	);
+            {/* wallet address */}
+            <div className="relative flex w-full gap-5 p-4 mb-4 text-white border-2 border-white border-dashed rounded-3xl">
+              <div className="flex w-full">
+                <input
+                  type="text"
+                  value={publicKey}
+                  readOnly
+                  className="w-full mr-3 overflow-hidden bg-transparent focus:outline-none"
+                />
+              </div>
+              <div>
+                <button
+                  className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
+                  onClick={handleDisconnect}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* create button */}
+            <div className="flex justify-center w-full">
+              <button
+                onClick={handleCreate}
+                disabled={!username || !avatarFile || isCreating}
+                className={`w-full p-4 rounded-3xl ${
+                  username && avatarFile && !isCreating
+                    ? "bg-primary-pink hover:bg-primary-pink/90"
+                    : "bg-dark-blue cursor-not-allowed"
+                } transition-colors duration-300 flex justify-center items-center`}
+              >
+                {isCreating ? <LoadingAnimation size={24} /> : "Create"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p>
+            <LoadingAnimation size={24} />
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 
@@ -496,18 +459,21 @@ Content:
 import "../styles/globals.css";
 import { SolanaProvider } from "../lib/solanaUtils";
 import { WalletConnectionProvider } from "../context/WalletConnectionProvider";
+import { PartyProvider } from "../context/PartyContext";
 import Layout from "../components/Layout";
 
 function MyApp({ Component, pageProps }) {
-	return (
-		<SolanaProvider>
-			<WalletConnectionProvider>
-				<Layout>
-					<Component {...pageProps} />
-				</Layout>
-			</WalletConnectionProvider>
-		</SolanaProvider>
-	);
+  return (
+    <SolanaProvider>
+      <WalletConnectionProvider>
+        <PartyProvider>
+          <Layout>
+            <Component {...pageProps} />
+          </Layout>
+        </PartyProvider>
+      </WalletConnectionProvider>
+    </SolanaProvider>
+  );
 }
 
 export default MyApp;
@@ -684,9 +650,6 @@ export default async function handler(req, res) {
       .select("group_id")
       .eq("user_id", userData.id);
 
-    console.log("userData", userData);
-    console.log("userGroups", userGroups);
-
     if (groupError) throw groupError;
 
     if (!userGroups || userGroups.length === 0) {
@@ -857,18 +820,25 @@ import { supabase } from "../../../lib/supabase";
 import { updateDailyPnL } from "../../../lib/updateDailyPnL";
 
 export default async function handler(req, res) {
+  console.log("Join group API handler started");
+
   if (req.method !== "POST") {
+    console.log(`Invalid method: ${req.method}`);
     return res.status(405).json({ message: "Method not allowed" });
   }
 
   const { inviteLink, userWallet } = req.body;
+  console.log(
+    `Received request: inviteLink=${inviteLink}, userWallet=${userWallet}`
+  );
 
   if (!inviteLink || !userWallet) {
+    console.log("Missing required fields");
     return res.status(400).json({ message: "Missing required fields" });
   }
 
   try {
-    // Fetch the user ID using the wallet address
+    console.log("Fetching user ID");
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("id")
@@ -876,12 +846,14 @@ export default async function handler(req, res) {
       .single();
 
     if (userError) {
+      console.error("User not found:", userError);
       throw new Error("User not found");
     }
 
     const userId = userData.id;
+    console.log(`User ID: ${userId}`);
 
-    // Fetch the group using the invite link
+    console.log("Fetching group data");
     const { data: groupData, error: groupError } = await supabase
       .from("leaderboard_groups")
       .select("id")
@@ -889,10 +861,13 @@ export default async function handler(req, res) {
       .single();
 
     if (groupError) {
+      console.error("Invalid invite link:", groupError);
       throw new Error("Invalid invite link");
     }
 
-    // Check if the user is already a member of the group
+    console.log(`Group ID: ${groupData.id}`);
+
+    console.log("Checking if user is already a member");
     const { data: existingMember, error: memberCheckError } = await supabase
       .from("group_members")
       .select()
@@ -901,23 +876,30 @@ export default async function handler(req, res) {
       .single();
 
     if (existingMember) {
-      return res
-        .status(400)
-        .json({ message: "User is already a member of this group" });
+      console.log("User is already a member of this group");
+      return res.status(400).json({
+        message: "User is already a member of this group",
+        groupId: groupData.id,
+      });
     }
 
-    // Add user to the group
+    console.log("Adding user to the group");
     const { data: newMember, error: addMemberError } = await supabase
       .from("group_members")
       .insert({ user_id: userId, group_id: groupData.id })
       .select()
       .single();
 
-    if (addMemberError) throw addMemberError;
+    if (addMemberError) {
+      console.error("Error adding member:", addMemberError);
+      throw addMemberError;
+    }
 
-    // Update P&L for the new user
+    console.log("User successfully added to the group");
+    // console.log("Updating P&L for the new user");
     // await updateDailyPnL(userId);
 
+    console.log("Join process completed successfully");
     res
       .status(200)
       .json({ message: "Successfully joined the group", member: newMember });
@@ -1348,28 +1330,46 @@ Content:
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "../../../context/WalletConnectionProvider";
-import { getAuthCookie } from "../../../lib/authCookies";
 import LoadingAnimation from "@/components/ui/Loader";
 
 export default function JoinGroup() {
   const router = useRouter();
   const { inviteLink } = router.query;
-  const { isAuthenticated, publicKey } = useWalletConnection();
+  const { isAuthenticated, publicKey, isLoading, checkAndSetAuthState } =
+    useWalletConnection();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
+  const [isAlreadyMember, setIsAlreadyMember] = useState(false);
+  const [groupId, setGroupId] = useState(null);
+  const [redirectCountdown, setRedirectCountdown] = useState(null);
 
   useEffect(() => {
-    const authCookie = getAuthCookie();
-    if (!authCookie) {
+    const initAuth = async () => {
+      await checkAndSetAuthState();
+    };
+    initAuth();
+  }, [checkAndSetAuthState]);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && inviteLink && publicKey) {
+      joinGroup();
+    } else if (!isLoading && !isAuthenticated) {
+      setRedirectCountdown(3);
+    }
+  }, [isLoading, isAuthenticated, inviteLink, publicKey]);
+
+  useEffect(() => {
+    let timer;
+    if (redirectCountdown !== null && redirectCountdown > 0) {
+      timer = setTimeout(
+        () => setRedirectCountdown(redirectCountdown - 1),
+        1000
+      );
+    } else if (redirectCountdown === 0) {
       router.push("/");
     }
-  }, [router]);
-
-  useEffect(() => {
-    if (isAuthenticated && inviteLink && publicKey) {
-      joinGroup();
-    }
-  }, [isAuthenticated, inviteLink, publicKey]);
+    return () => clearTimeout(timer);
+  }, [redirectCountdown, router]);
 
   const joinGroup = async () => {
     if (joining) return;
@@ -1380,9 +1380,6 @@ export default function JoinGroup() {
 
     setJoining(true);
     setError(null);
-
-    console.log("inviteLink", inviteLink);
-    console.log("userWallet", publicKey);
 
     try {
       const response = await fetch("/api/groups/join", {
@@ -1398,21 +1395,34 @@ export default function JoinGroup() {
 
       const data = await response.json();
 
-      if (!response.ok) {
+      if (
+        response.status === 400 &&
+        data.message.includes("already a member")
+      ) {
+        setIsAlreadyMember(true);
+        setGroupId(data.groupId);
+        setRedirectCountdown(3); // Start countdown for already-member users
+      } else if (!response.ok) {
         throw new Error(data.message || "Failed to join group");
-      }
-
-      if (!data.member || !data.member.group_id) {
+      } else if (!data.member || !data.member.group_id) {
         throw new Error("Invalid response from server");
+      } else {
+        router.push(`/group/${data.member.group_id}`);
       }
-
-      router.push(`/group/${data.member.group_id}`);
     } catch (err) {
       setError(err.message);
     } finally {
       setJoining(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingAnimation />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -1422,7 +1432,24 @@ export default function JoinGroup() {
           role="alert"
         >
           <span className="block sm:inline">
-            Please connect your wallet to join the group.
+            Please connect your wallet to join the group. Redirecting to home
+            page in {redirectCountdown} seconds...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAlreadyMember) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div
+          className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
+          <span className="block sm:inline">
+            You are already a member of this group. Redirecting to home page in{" "}
+            {redirectCountdown} seconds...
           </span>
         </div>
       </div>
@@ -1465,23 +1492,23 @@ Content:
 import UserCard from "./ui/UserCard";
 
 function LeaderboardList({ members, handleGroupClick }) {
-	return (
-		<div className="flex flex-col items-center space-y-2 overflow-x-auto">
-			{members.map((member, index) => (
-				<li
-					key={index}
-					onClick={() => handleGroupClick(member.id)}
-					className="list-none cursor-pointer"
-				>
-					<UserCard
-						id={index + 1}
-						name={member.name}
-						count={member.daily_change_percentage || 0}
-					/>
-				</li>
-			))}
-		</div>
-	);
+  return (
+    <div className="flex flex-col items-center space-y-2 overflow-x-auto">
+      {members.map((leaderboard, index) => (
+        <li
+          key={leaderboard.id}
+          onClick={() => handleGroupClick(leaderboard)}
+          className="list-none cursor-pointer"
+        >
+          <UserCard
+            id={index + 1}
+            name={leaderboard.name}
+            count={leaderboard.daily_change_percentage || 0}
+          />
+        </li>
+      ))}
+    </div>
+  );
 }
 
 export default LeaderboardList;
@@ -1613,7 +1640,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           />
         </button>
         <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
-          <h2 className="text-xl font-medium">Edit Party</h2>
+          <h2 className="text-xl font-medium text-white">Edit Party</h2>
         </div>
 
         <div className="py-5 mb-4 bg-dark-blue rounded-3xl">
@@ -1685,6 +1712,7 @@ File: components/UserProfile.js
 Content:
 import { useState, useEffect } from "react";
 import { useWalletConnection } from "../context/WalletConnectionProvider";
+import { useParty } from "../context/PartyContext";
 import Image from "next/image";
 import { useRouter } from "next/router";
 import { removeAuthCookie } from "../lib/authCookies";
@@ -1694,117 +1722,122 @@ import Loader from "./ui/Loader";
 import { shortenAddress } from "../lib/solanaUtils";
 
 const UserProfile = ({ onClose }) => {
-	const router = useRouter();
-	const { user, logout } = useWalletConnection();
-	const [leaderboards, setLeaderboards] = useState([]);
-	const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const { user, logout } = useWalletConnection();
+  const { selectParty } = useParty();
+  const [leaderboards, setLeaderboards] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-	useEffect(() => {
-		const fetchLeaderboards = async () => {
-			if (!user?.wallet_address) return;
+  useEffect(() => {
+    const fetchLeaderboards = async () => {
+      if (!user?.wallet_address) return;
 
-			try {
-				const response = await fetch(
-					`/api/user/leaderboards?walletAddress=${user.wallet_address}`
-				);
-				if (response.ok) {
-					const data = await response.json();
-					setLeaderboards(data);
-				} else {
-					console.error("Failed to fetch leaderboards");
-				}
-			} catch (error) {
-				console.error("Error fetching leaderboards:", error);
-			} finally {
-				setLoading(false);
-			}
-		};
+      try {
+        const response = await fetch(
+          `/api/user/leaderboards?walletAddress=${user.wallet_address}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setLeaderboards(data);
+        } else {
+          console.error("Failed to fetch leaderboards");
+        }
+      } catch (error) {
+        console.error("Error fetching leaderboards:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-		fetchLeaderboards();
-	}, [user]);
+    fetchLeaderboards();
+  }, [user]);
 
-	const handleGroupClick = (groupId) => {
-		router.push(`/group/${groupId}`);
-		onClose();
-	};
+  const handleGroupClick = (leaderboard) => {
+    // Ensure we have the correct structure for the party
+    const party = {
+      id: leaderboard.id,
+      name: leaderboard.name,
+      // Add any other necessary fields here
+    };
+    selectParty(party);
+    router.push(`/group/${party.id}`);
+    onClose();
+  };
 
-	const handleLogout = () => {
-		removeAuthCookie();
-		logout();
-		onClose();
-		router.push("/");
-	};
+  const handleLogout = () => {
+    removeAuthCookie();
+    logout();
+    onClose();
+    router.push("/");
+  };
 
-	if (!user) {
-		return null;
-	}
+  if (!user) {
+    return null;
+  }
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
-				<div className="flex-shrink-0 px-1 py-2 sm:p-5">
-					{/* close button */}
-					<button className="flex justify-end w-full cursor-default">
-						<X
-							size={32}
-							className="z-20 p-2 text-white rounded-full cursor-pointer bg-dark-blue"
-							onClick={onClose}
-						/>
-					</button>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
+        <div className="flex-shrink-0 px-1 py-2 sm:p-5">
+          <button className="flex justify-end w-full cursor-default">
+            <X
+              size={32}
+              className="z-20 p-2 text-white rounded-full cursor-pointer bg-dark-blue"
+              onClick={onClose}
+            />
+          </button>
 
-					<div className="flex flex-col items-center gap-2 -mt-5">
-						{/* user avatar */}
-						<Image
-							src={user.avatar_url || "/sample-img.png"}
-							alt="User Avatar"
-							width={64}
-							height={64}
-							className="rounded-full"
-						/>
+          <div className="flex flex-col items-center gap-2 -mt-5">
+            <Image
+              src={user.avatar_url || "/sample-img.png"}
+              alt="User Avatar"
+              width={64}
+              height={64}
+              className="rounded-full"
+            />
 
-						{/* username & wallet address */}
-						<div className="text-center">
-							<p className="text-xl text-white">
-								{user.username || "Anonymous"}
-							</p>
+            <div className="text-center">
+              <p className="text-xl text-white">
+                {user.username || "Anonymous"}
+              </p>
 
-							<div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2">
-								<p className="text-sm text-white/60">
-									{shortenAddress(user.wallet_address)}
-								</p>
-							</div>
-						</div>
-					</div>
-				</div>
+              <div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2">
+                <p className="text-sm text-white/60">
+                  {shortenAddress(user.wallet_address)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-				<div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
-					{loading ? (
-						<div className="flex items-center justify-center h-full">
-							<Loader />
-						</div>
-					) : leaderboards.length > 0 ? (
-						<LeaderboardList
-							members={leaderboards}
-							handleGroupClick={handleGroupClick}
-						/>
-					) : (
-						<p className="text-center text-white">
-							You are not part of any leaderboards yet!
-						</p>
-					)}
-				</div>
+        <div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader />
+            </div>
+          ) : leaderboards.length > 0 ? (
+            <LeaderboardList
+              members={leaderboards}
+              handleGroupClick={handleGroupClick}
+            />
+          ) : (
+            <p className="text-center text-white">
+              You are not part of any leaderboards yet!
+            </p>
+          )}
+        </div>
 
-				<div className="flex-shrink-0 p-5">
-					<button
-						onClick={handleLogout}
-						className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
-					>
-						Logout
-					</button>
-				</div>
-			</div>
-		</div>
-	);
+        <div className="flex-shrink-0 p-5">
+          <button
+            onClick={handleLogout}
+            className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default UserProfile;
@@ -1892,45 +1925,44 @@ import { ChevronDown } from "lucide-react";
 import UserProfile from "./UserProfile";
 import PartySwitcher from "./PartySwitcher";
 import { useWalletConnection } from "@/context/WalletConnectionProvider";
+import { useParty } from "@/context/PartyContext";
 import { useRouter } from "next/router";
+import Loader from "./ui/Loader";
 
 const Navbar = () => {
   const router = useRouter();
-  const { user } = useWalletConnection();
+  const { user, isLoading, isAuthenticated, publicKey } = useWalletConnection();
+  const { selectedParty, userParties, selectParty } = useParty();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
-  const [selectedParty, setSelectedParty] = useState(null);
-  const [userParties, setUserParties] = useState([]);
 
   useEffect(() => {
-    if (user?.wallet_address) {
-      fetchUserParties(user.wallet_address);
+    if (publicKey && !isAuthenticated && !isLoading) {
+      router.push("/");
     }
-  }, [user]);
+  }, [isAuthenticated, publicKey, isLoading, router]);
 
-  const fetchUserParties = async (walletAddress) => {
-    try {
-      const response = await fetch(`/api/dashboard/${walletAddress}`);
-      const data = await response.json();
-      setUserParties(data);
-      if (data.length > 0 && !selectedParty) {
-        const firstParty = data[0]; // Select the first party instead of a random one
-        setSelectedParty(firstParty);
-        router.push(`/group/${firstParty.id}`);
-      }
-    } catch (error) {
-      console.error("Error fetching user parties:", error);
-    }
+  const toggleUserProfile = () => {
+    setShowUserProfile(!showUserProfile);
   };
 
-  const toggleUserProfile = () => setShowUserProfile(!showUserProfile);
-  const togglePartySwitcher = () => setShowPartySwitcher(!showPartySwitcher);
+  const togglePartySwitcher = () => {
+    setShowPartySwitcher(!showPartySwitcher);
+  };
 
   const handlePartySelect = (party) => {
-    setSelectedParty(party);
+    selectParty(party);
     setShowPartySwitcher(false);
     router.push(`/group/${party.id}`);
   };
+
+  if (isLoading) {
+    return <Loader />;
+  }
+
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   return (
     <nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">
@@ -1980,27 +2012,28 @@ import Navbar from "./Navbar";
 import { useRouter } from "next/router";
 
 const Layout = ({ children }) => {
-	const router = useRouter();
-	const isHomePage = router.pathname === "/";
+  const router = useRouter();
+  const isHomePage = router.pathname === "/";
+  const isGroupJoinPage = /^\/group\/join\/[^/]+$/.test(router.pathname);
 
-	return (
-		<>
-			<Head>
-				<title>Solana Wallet Leaderboard</title>
-				<meta
-					name="description"
-					content="Track your Solana wallet performance with friends"
-				/>
-				<link rel="icon" href="/favicon.ico" />
-			</Head>
-			<div className="w-screen h-screen p-1 diamond-gradient">
-				<div className="flex flex-col w-full h-full bg-primary-blue">
-					{!isHomePage && <Navbar />}
-					<main className="w-full h-full mx-auto">{children}</main>
-				</div>
-			</div>
-		</>
-	);
+  return (
+    <>
+      <Head>
+        <title>Solana Wallet Leaderboard</title>
+        <meta
+          name="description"
+          content="Track your Solana wallet performance with friends"
+        />
+        <link rel="icon" href="/favicon.ico" />
+      </Head>
+      <div className="w-screen h-screen p-1 diamond-gradient">
+        <div className="flex flex-col w-full h-full bg-primary-blue">
+          {!isHomePage && !isGroupJoinPage && <Navbar />}
+          <main className="w-full h-full mx-auto">{children}</main>
+        </div>
+      </div>
+    </>
+  );
 };
 
 export default Layout;
@@ -2515,6 +2548,7 @@ export const setAuthCookie = (user) => {
 
 export const getAuthCookie = (options = {}) => {
   if (typeof window !== "undefined") {
+    console.log("get auth cookie client side");
     // Client-side
     const cookie = Cookies.get(AUTH_COOKIE_NAME);
     return cookie ? JSON.parse(cookie) : null;
@@ -2750,6 +2784,14 @@ export const generateInviteLink = (groupId) => {
   return `${process.env.NEXT_PUBLIC_BASE_URL}/group/join/${groupId}`;
 };
 
+export const sanitizeFileName = (fileName) => {
+  // Remove spaces and special characters, keep only alphanumeric and some safe characters
+  const sanitized = fileName.replace(/[^a-z0-9.-]/gi, "_");
+
+  // Ensure the file name is not too long
+  return sanitized.slice(0, 100);
+};
+
 
 ==================================================
 
@@ -2793,6 +2835,63 @@ export const getAvatarUrl = (path) => {
 
 ==================================================
 
+File: context/PartyContext.js
+Content:
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { useWalletConnection } from "./WalletConnectionProvider";
+
+const PartyContext = createContext();
+
+export const PartyProvider = ({ children }) => {
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [userParties, setUserParties] = useState([]);
+  const { user, isAuthenticated } = useWalletConnection();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isAuthenticated && user?.wallet_address) {
+      fetchUserParties(user.wallet_address);
+    }
+  }, [isAuthenticated, user]);
+
+  const fetchUserParties = async (walletAddress) => {
+    try {
+      const response = await fetch(`/api/dashboard/${walletAddress}`);
+      const data = await response.json();
+      setUserParties(data);
+      if (data.length > 0 && !selectedParty) {
+        setSelectedParty(data[0]);
+        router.push(`/group/${data[0].id}`);
+      }
+    } catch (error) {
+      console.error("Error fetching user parties:", error);
+    }
+  };
+
+  const selectParty = (party) => {
+    setSelectedParty(party);
+    router.push(`/group/${party.id}`);
+  };
+
+  return (
+    <PartyContext.Provider value={{ selectedParty, userParties, selectParty }}>
+      {children}
+    </PartyContext.Provider>
+  );
+};
+
+export const useParty = () => {
+  const context = useContext(PartyContext);
+  if (context === undefined) {
+    throw new Error("useParty must be used within a PartyProvider");
+  }
+  return context;
+};
+
+
+==================================================
+
 File: context/WalletConnectionProvider.js
 Content:
 import {
@@ -2821,25 +2920,47 @@ export const WalletConnectionProvider = ({ children }) => {
     logout: authLogout,
   } = useWalletAuth();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const checkAndSetAuthState = useCallback(async () => {
+    setIsLoading(true);
     const authCookie = getAuthCookie();
-    if (authCookie && connected && publicKey) {
+
+    if (connected && publicKey) {
       const existingUser = await checkWalletExists(publicKey.toString());
+
       if (existingUser) {
-        await loginUser(existingUser);
+        const loggedInUser = await loginUser(existingUser);
         setIsAuthenticated(true);
-        setAuthCookie(existingUser);
-        return { isAuthenticated: true, publicKey: publicKey.toString() };
+        setAuthCookie(loggedInUser);
+        setIsLoading(false);
+        return {
+          isAuthenticated: true,
+          publicKey: publicKey.toString(),
+          user: loggedInUser,
+        };
+      } else {
+        setIsAuthenticated(false);
+        removeAuthCookie();
+        setIsLoading(false);
+        return {
+          isAuthenticated: false,
+          publicKey: publicKey.toString(),
+          user: null,
+        };
       }
+    } else if (authCookie) {
+      removeAuthCookie();
     }
+
     setIsAuthenticated(false);
-    return { isAuthenticated: false, publicKey: null };
+    setIsLoading(false);
+    return { isAuthenticated: false, publicKey: null, user: null };
   }, [connected, publicKey, checkWalletExists, loginUser]);
 
   useEffect(() => {
     checkAndSetAuthState();
-  }, [checkAndSetAuthState]);
+  }, [checkAndSetAuthState, connected, publicKey]);
 
   const logout = useCallback(() => {
     disconnect();
@@ -2854,6 +2975,7 @@ export const WalletConnectionProvider = ({ children }) => {
     publicKey: publicKey?.toString(),
     logout,
     checkAndSetAuthState,
+    isLoading,
   };
 
   return (

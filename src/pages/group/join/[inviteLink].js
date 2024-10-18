@@ -1,28 +1,52 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "../../../context/WalletConnectionProvider";
-import { getAuthCookie } from "../../../lib/authCookies";
+import { useParty } from "../../../context/PartyContext";
 import LoadingAnimation from "@/components/ui/Loader";
 
 export default function JoinGroup() {
   const router = useRouter();
   const { inviteLink } = router.query;
-  const { isAuthenticated, publicKey } = useWalletConnection();
+  const { isAuthenticated, publicKey, isLoading, checkAndSetAuthState } =
+    useWalletConnection();
+  const { selectParty } = useParty();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
+  const [isAlreadyMember, setIsAlreadyMember] = useState(false);
+  const [groupId, setGroupId] = useState(null);
+  const [redirectCountdown, setRedirectCountdown] = useState(null);
 
   useEffect(() => {
-    const authCookie = getAuthCookie();
-    if (!authCookie) {
-      router.push("/");
-    }
-  }, [router]);
+    const initAuth = async () => {
+      await checkAndSetAuthState();
+    };
+    initAuth();
+  }, [checkAndSetAuthState]);
 
   useEffect(() => {
-    if (isAuthenticated && inviteLink && publicKey) {
+    if (!isLoading && isAuthenticated && inviteLink && publicKey) {
       joinGroup();
+    } else if (!isLoading && !isAuthenticated) {
+      setRedirectCountdown(3);
     }
-  }, [isAuthenticated, inviteLink, publicKey]);
+  }, [isLoading, isAuthenticated, inviteLink, publicKey]);
+
+  useEffect(() => {
+    let timer;
+    if (redirectCountdown !== null && redirectCountdown > 0) {
+      timer = setTimeout(
+        () => setRedirectCountdown(redirectCountdown - 1),
+        1000
+      );
+    } else if (redirectCountdown === 0) {
+      if (isAlreadyMember && groupId) {
+        router.push(`/group/${groupId}`);
+      } else {
+        router.push("/");
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [redirectCountdown, router, isAlreadyMember, groupId]);
 
   const joinGroup = async () => {
     if (joining) return;
@@ -33,9 +57,6 @@ export default function JoinGroup() {
 
     setJoining(true);
     setError(null);
-
-    console.log("inviteLink", inviteLink);
-    console.log("userWallet", publicKey);
 
     try {
       const response = await fetch("/api/groups/join", {
@@ -51,21 +72,35 @@ export default function JoinGroup() {
 
       const data = await response.json();
 
-      if (!response.ok) {
+      if (
+        response.status === 400 &&
+        data.message.includes("already a member")
+      ) {
+        setIsAlreadyMember(true);
+        setGroupId(data.groupId);
+        selectParty({ id: data.groupId, name: "Existing Group" }); // Update PartyContext
+        setRedirectCountdown(3); // Start countdown for already-member users
+      } else if (!response.ok) {
         throw new Error(data.message || "Failed to join group");
-      }
-
-      if (!data.member || !data.member.group_id) {
+      } else if (!data.member || !data.member.group_id) {
         throw new Error("Invalid response from server");
+      } else {
+        router.push(`/group/${data.member.group_id}`);
       }
-
-      router.push(`/group/${data.member.group_id}`);
     } catch (err) {
       setError(err.message);
     } finally {
       setJoining(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingAnimation />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -75,7 +110,24 @@ export default function JoinGroup() {
           role="alert"
         >
           <span className="block sm:inline">
-            Please connect your wallet to join the group.
+            Please connect your wallet to join the group. Redirecting to home
+            page in {redirectCountdown} seconds...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAlreadyMember) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div
+          className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4"
+          role="alert"
+        >
+          <span className="block sm:inline">
+            You are already a member of this group. Redirecting to the group
+            page in {redirectCountdown} seconds...
           </span>
         </div>
       </div>
