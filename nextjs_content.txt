@@ -63,7 +63,7 @@ export const useWalletAuth = () => {
   }, []);
 
   const authenticateUser = useCallback(
-    async (username) => {
+    async (username, avatarUrl) => {
       if (!publicKey || !signMessage || !username) {
         console.log(
           "Cannot authenticate: missing publicKey, signMessage, or username"
@@ -82,10 +82,11 @@ export const useWalletAuth = () => {
             {
               wallet_address: publicKey.toString(),
               username: username,
+              avatar_url: avatarUrl,
             },
             {
               onConflict: "wallet_address",
-              update: { username: username },
+              update: { username: username, avatar_url: avatarUrl },
             }
           )
           .select()
@@ -265,126 +266,226 @@ import { useWalletConnection } from "../context/WalletConnectionProvider";
 import { useWalletAuth } from "../hooks/useWalletAuth";
 import dynamic from "next/dynamic";
 import { X } from "lucide-react";
-import LoadingAnimation from "@/components/ui/Loader"; // Make sure to import your LoadingAnimation component
+import LoadingAnimation from "@/components/ui/Loader";
+import { supabase } from "../lib/supabase";
+import Image from "next/image";
 
 const WalletConnectButton = dynamic(
-  () => import("../components/WalletConnectButton"),
-  { ssr: false }
+	() => import("../components/WalletConnectButton"),
+	{ ssr: false }
 );
 
 export default function Home() {
-  const router = useRouter();
-  const { isAuthenticated, user, publicKey } = useWalletConnection();
-  const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
-  const [username, setUsername] = useState("");
-  const [walletChecked, setWalletChecked] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+	const router = useRouter();
+	const { isAuthenticated, user, publicKey } = useWalletConnection();
+	const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
+	const [username, setUsername] = useState("");
+	const [walletChecked, setWalletChecked] = useState(false);
+	const [isCreating, setIsCreating] = useState(false);
+	const [avatarFile, setAvatarFile] = useState(null);
+	const [avatarPreview, setAvatarPreview] = useState(null);
 
-  const checkWallet = useCallback(async () => {
-    if (publicKey && !walletChecked) {
-      const existingUser = await checkWalletExists(publicKey);
-      if (existingUser) {
-        await loginUser(existingUser);
-        router.push("/dashboard");
-      }
-      setWalletChecked(true);
-    }
-  }, [publicKey, walletChecked, checkWalletExists, loginUser, router]);
+	const checkWallet = useCallback(async () => {
+		if (publicKey && !walletChecked) {
+			const existingUser = await checkWalletExists(publicKey);
+			if (existingUser) {
+				await loginUser(existingUser);
+				redirectToFirstParty(existingUser.wallet_address);
+			}
+			setWalletChecked(true);
+		}
+	}, [publicKey, walletChecked, checkWalletExists, loginUser]);
 
-  useEffect(() => {
-    checkWallet();
-  }, [checkWallet]);
+	useEffect(() => {
+		checkWallet();
+	}, [checkWallet]);
 
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      router.push("/dashboard");
-    }
-  }, [isAuthenticated, user, router]);
+	useEffect(() => {
+		if (isAuthenticated && user) {
+			redirectToFirstParty(user.wallet_address);
+		}
+	}, [isAuthenticated, user]);
 
-  const handleCreate = async () => {
-    if (username && publicKey) {
-      setIsCreating(true);
-      const user = await authenticateUser(username);
-      if (user) {
-        router.push("/dashboard");
-      } else {
-        setIsCreating(false);
-      }
-    }
-  };
+	const redirectToFirstParty = async (walletAddress) => {
+		try {
+			const response = await fetch(`/api/dashboard/${walletAddress}`);
+			const parties = await response.json();
+			if (parties.length > 0) {
+				router.push(`/group/${parties[0].id}`);
+			} else {
+				// If no parties exist, redirect to dashboard or show a message
+				router.push("/create-group");
+			}
+		} catch (error) {
+			console.error("Error fetching user parties:", error);
+			router.push("/dashboard"); // Fallback to dashboard in case of error
+		}
+	};
 
-  const handleDisconnect = () => {
-    // Implement wallet disconnection logic here
-    setWalletChecked(false);
-  };
+	const handleAvatarChange = (e) => {
+		const file = e.target.files[0];
+		if (file) {
+			setAvatarFile(file);
+			setAvatarPreview(URL.createObjectURL(file));
+		}
+	};
 
-  const truncateAddress = (address) => {
-    if (address.length > 12) {
-      return `${address.slice(0, 6)}...${address.slice(-4)}`;
-    }
-    return address;
-  };
+	const handleCreate = async () => {
+		if (username && publicKey && avatarFile) {
+			setIsCreating(true);
+			try {
+				// Upload avatar to Supabase Storage
+				const { data: uploadData, error: uploadError } =
+					await supabase.storage
+						.from("avatars")
+						.upload(`${publicKey}/${avatarFile.name}`, avatarFile);
 
-  return (
-    <div className="mt-5 text-white">
-      <div className="text-center">
-        <h1 className="mb-8 text-4xl font-bold font-reem-kufi-fun">
-          🌝 moonparty
-        </h1>
+				if (uploadError) throw uploadError;
 
-        <div className="flex items-center justify-center w-24 h-24 mx-auto mb-8 rounded-full bg-dark-blue">
-          <div className="text-4xl">😊</div>
-        </div>
+				// Get public URL of the uploaded avatar
+				const {
+					data: { publicUrl },
+				} = supabase.storage
+					.from("avatars")
+					.getPublicUrl(uploadData.path);
 
-        {!publicKey ? (
-          <div className="mb-4">
-            <WalletConnectButton />
-          </div>
-        ) : walletChecked && !user ? (
-          <>
-            <input
-              type="text"
-              placeholder="Add a username..."
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full max-w-md py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
-            />
+				// Create user with avatar URL
+				const user = await authenticateUser(username, publicUrl);
 
-            <div className="relative mb-4 w-full max-w-md mx-auto">
-              <input
-                type="text"
-                value={truncateAddress(publicKey)}
-                readOnly
-                className="w-full p-4 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none"
-              />
-              <button
-                className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
-                onClick={handleDisconnect}
-              >
-                <X size={20} />
-              </button>
-            </div>
+				if (user) {
+					// Create a party for the user
+					await createParty(user.id, username);
+					redirectToFirstParty(user.wallet_address);
+				} else {
+					throw new Error("Failed to create user");
+				}
+			} catch (error) {
+				console.error("Error creating user or party:", error);
+				setIsCreating(false);
+			}
+		}
+	};
 
-            <div className="flex justify-center w-full max-w-md mx-auto">
-              <button
-                onClick={handleCreate}
-                disabled={!username || isCreating}
-                className={`w-full p-4 rounded-3xl ${
-                  username && !isCreating
-                    ? "bg-primary-pink hover:bg-primary-pink/90"
-                    : "bg-dark-blue cursor-not-allowed"
-                } transition-colors duration-300 flex justify-center items-center`}
-              >
-                {isCreating ? <LoadingAnimation size={24} /> : "Create"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <p>Checking wallet...</p>
-        )}
-      </div>
-    </div>
-  );
+	const createParty = async (userId, partyName) => {
+		try {
+			const response = await fetch("/api/groups/create", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					name: partyName,
+					creatorWallet: publicKey,
+				}),
+			});
+
+			if (!response.ok) {
+				throw new Error("Failed to create party");
+			}
+
+			const data = await response.json();
+			return data;
+		} catch (error) {
+			console.error("Error creating party:", error);
+			throw error;
+		}
+	};
+
+	const handleDisconnect = () => {
+		// Implement wallet disconnection logic here
+		setWalletChecked(false);
+	};
+
+	return (
+		<div className="flex flex-col items-center justify-center h-full text-white">
+			<div className="flex flex-col items-center w-full max-w-xs text-center sm:max-w-sm md:max-w-lg">
+				<h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
+					🌝 moonparty
+				</h1>
+
+				{!publicKey ? (
+					<div className="mb-4">
+						<WalletConnectButton />
+					</div>
+				) : walletChecked && !user ? (
+					<>
+						<input
+							type="text"
+							placeholder="Add a username..."
+							value={username}
+							onChange={(e) => setUsername(e.target.value)}
+							className="w-full py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+						/>
+
+						{/* avatar uploader */}
+						<div className="flex justify-center mb-4">
+							<input
+								type="file"
+								accept="image/*"
+								onChange={handleAvatarChange}
+								className="hidden"
+								id="avatar-upload"
+							/>
+							<label
+								htmlFor="avatar-upload"
+								className="cursor-pointer"
+							>
+								<Image
+									width={100}
+									height={100}
+									alt={"avatar image"}
+									src={"/avatar-default.svg"}
+								/>
+							</label>
+						</div>
+
+						{/* wallet address */}
+						<div className="relative flex w-full gap-5 p-4 mb-4 text-white border-2 border-white border-dashed rounded-3xl">
+							<div className="flex w-full">
+								<input
+									type="text"
+									value={publicKey}
+									readOnly
+									className="w-full mr-3 overflow-hidden bg-transparent focus:outline-none"
+								/>
+							</div>
+							<div>
+								<button
+									className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
+									onClick={handleDisconnect}
+								>
+									<X size={20} />
+								</button>
+							</div>
+						</div>
+
+						{/* create button */}
+						<div className="flex justify-center w-full">
+							<button
+								onClick={handleCreate}
+								disabled={
+									!username || !avatarFile || isCreating
+								}
+								className={`w-full p-4 rounded-3xl ${
+									username && avatarFile && !isCreating
+										? "bg-primary-pink hover:bg-primary-pink/90"
+										: "bg-dark-blue cursor-not-allowed"
+								} transition-colors duration-300 flex justify-center items-center`}
+							>
+								{isCreating ? (
+									<LoadingAnimation size={24} />
+								) : (
+									"Create"
+								)}
+							</button>
+						</div>
+					</>
+				) : (
+					<p>Checking wallet...</p>
+				)}
+			</div>
+		</div>
+	);
 }
 
 
@@ -544,183 +645,6 @@ class MyDocument extends Document {
 }
 
 export default MyDocument;
-
-
-==================================================
-
-File: pages/api/cron-daily-pnl-update.js
-Content:
-import { updateDailyPnL } from "../../lib/updateDailyPnL";
-
-export default async function handler(req, res) {
-  // Check for a secret token to ensure this route can only be called by the Vercel cron job
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET_TOKEN}`) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  try {
-    await updateDailyPnL();
-    res
-      .status(200)
-      .json({ message: "Daily P&L update completed successfully" });
-  } catch (error) {
-    console.error("Error in cron job:", error);
-    res
-      .status(500)
-      .json({ message: "Error updating daily P&L", error: error.message });
-  }
-}
-
-
-==================================================
-
-File: pages/api/update-daily-pnl.js
-Content:
-import { supabase } from "../../lib/supabase";
-import axios from "axios";
-
-async function getWalletBalance(walletAddress) {
-  try {
-    const response = await axios.get(
-      `https://openapiv1.coinstats.app/wallet/balance?address=${walletAddress}&connectionId=solana`,
-      {
-        headers: {
-          "X-API-KEY": process.env.NEXT_PUBLIC_COINSTATS_API_KEY,
-          accept: "application/json",
-        },
-      }
-    );
-
-    const solData = response.data.find((coin) => coin.coinId === "solana");
-    return {
-      amount: solData.amount,
-      price: solData.price,
-    };
-  } catch (error) {
-    console.error("Error fetching wallet balance:", error);
-    throw error;
-  }
-}
-
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
-
-  try {
-    const { data: users, error: userError } = await supabase
-      .from("users")
-      .select("id, wallet_address");
-
-    if (userError) throw userError;
-
-    const today = new Date().toISOString().split("T")[0];
-
-    for (const user of users) {
-      const { amount: solAmount, price: solPrice } = await getWalletBalance(
-        user.wallet_address
-      );
-      const currentValueUSD = solAmount * solPrice;
-
-      // Insert or update asset snapshot
-      const { error: snapshotError } = await supabase
-        .from("asset_snapshots")
-        .upsert(
-          {
-            user_id: user.id,
-            total_value: currentValueUSD,
-            sol_amount: solAmount,
-            sol_price_usd: solPrice,
-            snapshot_date: today,
-          },
-          {
-            onConflict: "user_id, snapshot_date",
-          }
-        );
-
-      if (snapshotError) throw snapshotError;
-
-      // Get yesterday's snapshot
-      const yesterday = new Date(new Date().setDate(new Date().getDate() - 1))
-        .toISOString()
-        .split("T")[0];
-      const { data: yesterdaySnapshot } = await supabase
-        .from("asset_snapshots")
-        .select("total_value, sol_amount, sol_price_usd")
-        .eq("user_id", user.id)
-        .eq("snapshot_date", yesterday)
-        .single();
-
-      let yesterdayValueUSD = currentValueUSD;
-      if (yesterdaySnapshot) {
-        yesterdayValueUSD = yesterdaySnapshot.total_value;
-      }
-
-      // Calculate daily change
-      const dailyChangeValue = currentValueUSD - yesterdayValueUSD;
-      const dailyChangePercentage =
-        yesterdayValueUSD !== 0
-          ? (dailyChangeValue / yesterdayValueUSD) * 100
-          : 0;
-
-      // Fetch all groups the user is a member of
-      const { data: userGroups } = await supabase
-        .from("group_members")
-        .select("group_id")
-        .eq("user_id", user.id);
-
-      for (const { group_id } of userGroups) {
-        // Insert or update daily ranking for each group
-        await supabase.from("daily_rankings").upsert(
-          {
-            user_id: user.id,
-            group_id,
-            ranking_date: today,
-            current_balance: currentValueUSD,
-            sol_amount: solAmount,
-            sol_price_usd: solPrice,
-            daily_change_percentage: dailyChangePercentage,
-            daily_change_value: dailyChangeValue,
-            rank: 0, // We'll update ranks in a separate step
-          },
-          {
-            onConflict: "user_id, group_id, ranking_date",
-          }
-        );
-      }
-    }
-
-    // Update ranks for each group
-    const { data: groups } = await supabase
-      .from("leaderboard_groups")
-      .select("id");
-
-    for (const { id: group_id } of groups) {
-      const { data: groupRankings } = await supabase
-        .from("daily_rankings")
-        .select("id, daily_change_percentage")
-        .eq("group_id", group_id)
-        .eq("ranking_date", today)
-        .order("daily_change_percentage", { ascending: false });
-
-      for (let i = 0; i < groupRankings.length; i++) {
-        await supabase
-          .from("daily_rankings")
-          .update({ rank: i + 1 })
-          .eq("id", groupRankings[i].id);
-      }
-    }
-
-    res
-      .status(200)
-      .json({ message: "Daily P&L update completed successfully" });
-  } catch (error) {
-    console.error("Error updating daily P&L:", error);
-    res
-      .status(500)
-      .json({ message: "Error updating daily P&L", error: error.message });
-  }
-}
 
 
 ==================================================
@@ -898,7 +822,8 @@ export default async function handler(req, res) {
         group_members (
           users (
             wallet_address,
-            username
+            username,
+            avatar_url
           )
         )
       `
@@ -991,7 +916,7 @@ export default async function handler(req, res) {
     if (addMemberError) throw addMemberError;
 
     // Update P&L for the new user
-    await updateDailyPnL(userId);
+    // await updateDailyPnL(userId);
 
     res
       .status(200)
@@ -1107,7 +1032,8 @@ export default async function handler(req, res) {
         *,
         users (
           wallet_address,
-          username
+          username,
+          avatar_url
         )
       `
       )
@@ -1217,7 +1143,8 @@ export default async function handler(req, res) {
           users (
             id,
             username,
-            wallet_address
+            wallet_address,
+            avatar_url
           )
         `
         )
@@ -1235,12 +1162,10 @@ export default async function handler(req, res) {
       res.status(200).json(members);
     } catch (error) {
       console.error("Error fetching group members:", error);
-      res
-        .status(500)
-        .json({
-          message: "Error fetching group members",
-          error: error.message,
-        });
+      res.status(500).json({
+        message: "Error fetching group members",
+        error: error.message,
+      });
     }
   } else {
     res.setHeader("Allow", ["GET"]);
@@ -1406,14 +1331,10 @@ export default function GroupDetails() {
     return <div>Group not found.</div>;
   }
 
-  console.log("group from id", group);
-
   return (
     <div className="flex flex-col items-center mt-10 space-y-4">
       <TopUsers members={group.group_members} />
-      {/* members */}
-      <MembersList members={group.group_members} handleGroupClick={() => {}} />
-
+      <MembersList members={group.group_members} />
       {/* <GroupInviteLink inviteLink={group.invite_link} /> */}
     </div>
   );
@@ -1485,7 +1406,7 @@ export default function JoinGroup() {
         throw new Error("Invalid response from server");
       }
 
-      router.push(`/dashboard`);
+      router.push(`/group/${data.member.group_id}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1587,14 +1508,13 @@ const LeaderboardTable = ({ groupId }) => {
     );
   }
 
-  console.log(leaderboard);
-
   return (
     <div className="flex items-center justify-center mt-5 overflow-x-auto">
       {leaderboard.map((entry, index) => (
         <UserCard
           key={entry.users.wallet_address}
           id={index + 1}
+          avatar={entry.users.avatar_url}
           name={entry.users.username}
           count={entry.daily_change_percentage}
         />
@@ -1685,7 +1605,6 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
       <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col overflow-y-scroll no-scrollbar p-5">
-        {/* <div className="z-20"> */}
         <button className="flex justify-end w-full z-20 cursor-default">
           <X
             size={32}
@@ -1693,13 +1612,10 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
             onClick={onClose}
           />
         </button>
-        {/* </div> */}
-        {/* heading */}
         <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
           <h2 className="text-xl font-medium">Edit Party</h2>
         </div>
 
-        {/* group name */}
         <div className="py-5 mb-4 bg-dark-blue rounded-3xl">
           <input
             type="text"
@@ -1709,7 +1625,6 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           />
         </div>
 
-        {/* invite link */}
         <div className="flex justify-between w-full px-3 py-4 mb-4 border border-dashed border-white/60 rounded-3xl">
           <input
             type="text"
@@ -1725,10 +1640,8 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           </button>
         </div>
 
-        {/* party members */}
         {loading ? (
           <p className="text-center text-white">
-            {" "}
             <Loader />
           </p>
         ) : (
@@ -1740,7 +1653,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
               >
                 <div className="flex items-center">
                   <Image
-                    src={member.avatar || "/sample-img.png"}
+                    src={member.avatar_url || "/sample-img.png"}
                     alt={member.username}
                     width={32}
                     height={32}
@@ -1778,112 +1691,120 @@ import { removeAuthCookie } from "../lib/authCookies";
 import { X } from "lucide-react";
 import LeaderboardList from "./LeaderboardList";
 import Loader from "./ui/Loader";
+import { shortenAddress } from "../lib/solanaUtils";
 
 const UserProfile = ({ onClose }) => {
-  const router = useRouter();
-  const { user, logout } = useWalletConnection();
-  const [leaderboards, setLeaderboards] = useState([]);
-  const [loading, setLoading] = useState(true);
+	const router = useRouter();
+	const { user, logout } = useWalletConnection();
+	const [leaderboards, setLeaderboards] = useState([]);
+	const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchLeaderboards = async () => {
-      if (!user?.wallet_address) return;
+	useEffect(() => {
+		const fetchLeaderboards = async () => {
+			if (!user?.wallet_address) return;
 
-      try {
-        const response = await fetch(
-          `/api/user/leaderboards?walletAddress=${user.wallet_address}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setLeaderboards(data);
-        } else {
-          console.error("Failed to fetch leaderboards");
-        }
-      } catch (error) {
-        console.error("Error fetching leaderboards:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+			try {
+				const response = await fetch(
+					`/api/user/leaderboards?walletAddress=${user.wallet_address}`
+				);
+				if (response.ok) {
+					const data = await response.json();
+					setLeaderboards(data);
+				} else {
+					console.error("Failed to fetch leaderboards");
+				}
+			} catch (error) {
+				console.error("Error fetching leaderboards:", error);
+			} finally {
+				setLoading(false);
+			}
+		};
 
-    fetchLeaderboards();
-  }, [user]);
+		fetchLeaderboards();
+	}, [user]);
 
-  const handleGroupClick = (groupId) => {
-    router.push(`/group/${groupId}`);
-    onClose();
-  };
+	const handleGroupClick = (groupId) => {
+		router.push(`/group/${groupId}`);
+		onClose();
+	};
 
-  const handleLogout = () => {
-    removeAuthCookie();
-    logout();
-    onClose();
-    router.push("/");
-  };
+	const handleLogout = () => {
+		removeAuthCookie();
+		logout();
+		onClose();
+		router.push("/");
+	};
 
-  if (!user) {
-    return null; // Or some loading state
-  }
+	if (!user) {
+		return null;
+	}
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
-        <div className="flex-shrink-0 px-1 py-2 sm:p-5">
-          <button className="flex justify-end w-full cursor-default">
-            <X
-              size={32}
-              className="p-2 text-white rounded-full bg-dark-blue cursor-pointer z-20"
-              onClick={onClose}
-            />
-          </button>
+	return (
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+			<div className="rounded-3xl h-[95vh] md:h-[60vh] bg-primary-blue w-full max-w-md sm:max-w-xl m-5 flex flex-col">
+				<div className="flex-shrink-0 px-1 py-2 sm:p-5">
+					{/* close button */}
+					<button className="flex justify-end w-full cursor-default">
+						<X
+							size={32}
+							className="z-20 p-2 text-white rounded-full cursor-pointer bg-dark-blue"
+							onClick={onClose}
+						/>
+					</button>
 
-          {/* profile pic, username & wallet address */}
-          <div className="flex flex-col items-center gap-2 -mt-5">
-            <Image
-              src="/sample-img.png"
-              alt="User Avatar"
-              width={64}
-              height={64}
-              className="rounded-full"
-            />
-            <div className="text-center">
-              <p className="text-xl text-white">
-                {user.username || "Anonymous"}
-              </p>
-            </div>
-          </div>
-        </div>
+					<div className="flex flex-col items-center gap-2 -mt-5">
+						{/* user avatar */}
+						<Image
+							src={user.avatar_url || "/sample-img.png"}
+							alt="User Avatar"
+							width={64}
+							height={64}
+							className="rounded-full"
+						/>
 
-        {/* leaderboards */}
-        <div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
-          {loading ? (
-            <div className="flex justify-center items-center h-full">
-              <Loader />
-            </div>
-          ) : leaderboards.length > 0 ? (
-            <LeaderboardList
-              members={leaderboards}
-              handleGroupClick={handleGroupClick}
-            />
-          ) : (
-            <p className="text-center text-white">
-              You are not part of any leaderboards yet!
-            </p>
-          )}
-        </div>
+						{/* username & wallet address */}
+						<div className="text-center">
+							<p className="text-xl text-white">
+								{user.username || "Anonymous"}
+							</p>
 
-        {/* logout button */}
-        <div className="flex-shrink-0 p-5">
-          <button
-            onClick={handleLogout}
-            className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
-          >
-            Logout
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+							<div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2">
+								<p className="text-sm text-white/60">
+									{shortenAddress(user.wallet_address)}
+								</p>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div className="flex-grow px-1 py-2 overflow-y-auto sm:px-5">
+					{loading ? (
+						<div className="flex items-center justify-center h-full">
+							<Loader />
+						</div>
+					) : leaderboards.length > 0 ? (
+						<LeaderboardList
+							members={leaderboards}
+							handleGroupClick={handleGroupClick}
+						/>
+					) : (
+						<p className="text-center text-white">
+							You are not part of any leaderboards yet!
+						</p>
+					)}
+				</div>
+
+				<div className="flex-shrink-0 p-5">
+					<button
+						onClick={handleLogout}
+						className="w-full py-3 text-white transition-colors duration-200 rounded-2xl bg-primary-pink hover:bg-primary-pink/90"
+					>
+						Logout
+					</button>
+				</div>
+			</div>
+		</div>
+	);
 };
 
 export default UserProfile;
@@ -1965,57 +1886,86 @@ export default WalletConnectButton;
 
 File: components/Navbar.js
 Content:
-import Link from "next/link";
+import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import UserProfile from "./UserProfile";
-import WalletConnectButton from "./WalletConnectButton";
+import PartySwitcher from "./PartySwitcher";
 import { useWalletConnection } from "@/context/WalletConnectionProvider";
+import { useRouter } from "next/router";
 
 const Navbar = () => {
-	const { isAuthenticated, logout } = useWalletConnection();
-	const [showDropdown, setShowDropdown] = useState(false);
-	const [showUserProfile, setShowUserProfile] = useState(false);
+  const router = useRouter();
+  const { user } = useWalletConnection();
+  const [showUserProfile, setShowUserProfile] = useState(false);
+  const [showPartySwitcher, setShowPartySwitcher] = useState(false);
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [userParties, setUserParties] = useState([]);
 
-	const toggleDropdown = () => setShowDropdown(!showDropdown);
-	const toggleUserProfile = () => setShowUserProfile(!showUserProfile);
+  useEffect(() => {
+    if (user?.wallet_address) {
+      fetchUserParties(user.wallet_address);
+    }
+  }, [user]);
 
-	return (
-		<nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">
-			<div className="flex items-center justify-start grow shrink basis-0 h-9">
-				<Link href="/" className="text-2xl text-center text-white">
-					MoonParty
-				</Link>
-				<ChevronDown className="text-white" size={30} />
-			</div>
-			<button onClick={toggleUserProfile} className="focus:outline-none">
-				<Image
-					width={40}
-					height={40}
-					alt="User Avatar"
-					src="/sample-img.png"
-					className="w-10 h-10 rounded-full"
-				/>
-			</button>
+  const fetchUserParties = async (walletAddress) => {
+    try {
+      const response = await fetch(`/api/dashboard/${walletAddress}`);
+      const data = await response.json();
+      setUserParties(data);
+      if (data.length > 0 && !selectedParty) {
+        const firstParty = data[0]; // Select the first party instead of a random one
+        setSelectedParty(firstParty);
+        router.push(`/group/${firstParty.id}`);
+      }
+    } catch (error) {
+      console.error("Error fetching user parties:", error);
+    }
+  };
 
-			{showDropdown && (
-				<div className="absolute right-0 z-10 w-48 py-1 mt-2 bg-white rounded-md shadow-lg">
-					<WalletConnectButton />
-					{isAuthenticated && (
-						<button
-							onClick={logout}
-							className="block w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100"
-						>
-							Logout
-						</button>
-					)}
-				</div>
-			)}
+  const toggleUserProfile = () => setShowUserProfile(!showUserProfile);
+  const togglePartySwitcher = () => setShowPartySwitcher(!showPartySwitcher);
 
-			{showUserProfile && <UserProfile onClose={toggleUserProfile} />}
-		</nav>
-	);
+  const handlePartySelect = (party) => {
+    setSelectedParty(party);
+    setShowPartySwitcher(false);
+    router.push(`/group/${party.id}`);
+  };
+
+  return (
+    <nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">
+      <div className="flex items-center justify-start grow shrink basis-0 h-9">
+        <button onClick={togglePartySwitcher} className="flex items-center">
+          <span className="text-2xl text-center text-white">
+            {selectedParty ? selectedParty.name : "Select a Party"}
+          </span>
+          <ChevronDown className="text-white" size={30} />
+        </button>
+      </div>
+      <button
+        onClick={toggleUserProfile}
+        className="focus:outline-none flex flex-col items-center"
+      >
+        <Image
+          width={40}
+          height={40}
+          alt="User Avatar"
+          src={user?.avatar_url || "/sample-img.png"}
+          className="w-10 h-10 rounded-full"
+        />
+      </button>
+
+      {showPartySwitcher && (
+        <PartySwitcher
+          onClose={togglePartySwitcher}
+          onSelect={handlePartySelect}
+          parties={userParties}
+        />
+      )}
+
+      {showUserProfile && <UserProfile onClose={toggleUserProfile} />}
+    </nav>
+  );
 };
 
 export default Navbar;
@@ -2027,8 +1977,12 @@ File: components/Layout.js
 Content:
 import Head from "next/head";
 import Navbar from "./Navbar";
+import { useRouter } from "next/router";
 
 const Layout = ({ children }) => {
+	const router = useRouter();
+	const isHomePage = router.pathname === "/";
+
 	return (
 		<>
 			<Head>
@@ -2039,10 +1993,10 @@ const Layout = ({ children }) => {
 				/>
 				<link rel="icon" href="/favicon.ico" />
 			</Head>
-			<div className="w-screen h-screen p-2 diamond-gradient">
-				<div className="w-full h-full bg-primary-blue">
-					<Navbar />
-					<main className="mx-auto">{children}</main>
+			<div className="w-screen h-screen p-1 diamond-gradient">
+				<div className="flex flex-col w-full h-full bg-primary-blue">
+					{!isHomePage && <Navbar />}
+					<main className="w-full h-full mx-auto">{children}</main>
 				</div>
 			</div>
 		</>
@@ -2050,6 +2004,79 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
+
+
+==================================================
+
+File: components/PartySwitcher.js
+Content:
+import { useState } from "react";
+import { X } from "lucide-react";
+import PartyCard from "./ui/PartyCard";
+import CreateBtn from "./ui/CreateBtn";
+import { useRouter } from "next/router";
+
+const PartySwitcher = ({ onClose, onSelect, parties }) => {
+	const router = useRouter();
+	const [createLoading, setCreateLoading] = useState(false);
+
+	const handleCreateClick = () => {
+		setCreateLoading(true);
+		router.push("/create-group");
+		onClose();
+	};
+
+	const handleGroupClick = (group) => {
+		onSelect(group);
+		onClose();
+		router.push(`/group/${group.id}`);
+	};
+
+	return (
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+			<div className="w-full h-[95vh] md:h-[60vh] max-w-md p-5 m-5 overflow-y-scroll rounded-3xl bg-primary-blue sm:max-w-lg flex flex-col">
+				<button className="z-20 flex justify-end w-full cursor-default">
+					<X
+						size={32}
+						className="p-2 text-white rounded-full cursor-pointer bg-dark-blue"
+						onClick={onClose}
+					/>
+				</button>
+
+				<h2 className="mb-4 text-xl font-medium text-center text-white">
+					My Parties
+				</h2>
+
+				{parties.length > 0 ? (
+					<ul className="flex flex-col items-center flex-grow space-y-2 overflow-y-auto">
+						{parties.map((group) => (
+							<li key={group.id} className="w-full">
+								<PartyCard
+									group={group}
+									onClick={handleGroupClick}
+								/>
+							</li>
+						))}
+					</ul>
+				) : (
+					<p className="text-center text-white">
+						You have not created any parties yet.
+					</p>
+				)}
+
+				<div className="flex justify-center w-full mt-4">
+					<CreateBtn
+						onClick={handleCreateClick}
+						loading={createLoading}
+						text={"Create New Party"}
+					/>
+				</div>
+			</div>
+		</div>
+	);
+};
+
+export default PartySwitcher;
 
 
 ==================================================
@@ -2125,8 +2152,12 @@ function MembersList({ members }) {
     <div className="flex flex-col items-center space-y-2 overflow-x-auto">
       {members.map((member, index) => (
         <li key={index} className="list-none cursor-pointer">
-          {console.log(member)}
-          <UserCard id={index + 1} name={member.users.username} count={0} />
+          <UserCard
+            id={index + 1}
+            name={member.users.username}
+            count={member.daily_change_percentage || 0}
+            avatar={member.users.avatar_url}
+          />
         </li>
       ))}
     </div>
@@ -2140,66 +2171,78 @@ export default MembersList;
 
 File: components/TopUsers.js
 Content:
+import Image from "next/image";
 import React from "react";
 
 function TopUsers({ members }) {
-  // Check if members is an array and has elements
-  if (!Array.isArray(members) || members.length === 0) {
-    return <div className="text-white text-center">No members to display</div>;
-  }
+	// Check if members is an array and has elements
+	if (!Array.isArray(members) || members.length === 0) {
+		return (
+			<div className="text-center text-white">No members to display</div>
+		);
+	}
 
-  // Sort members by daily_change_percentage in descending order
-  const sortedMembers = [...members].sort(
-    (a, b) => b.daily_change_percentage - a.daily_change_percentage
-  );
+	// Sort members by daily_change_percentage in descending order
+	const sortedMembers = [...members].sort(
+		(a, b) => b.daily_change_percentage - a.daily_change_percentage
+	);
 
-  // Get top 3 members or all if less than 3
-  const topThree = sortedMembers.slice(0, 3);
+	// Get top 3 members or all if less than 3
+	const topThree = sortedMembers.slice(0, 3);
 
-  // Define colors and sizes for each position
-  const positions = [
-    { color: "#ffb600", size: "w-28 h-28", numberSize: "w-8 h-8" },
-    { color: "#0099ff", size: "w-20 h-20", numberSize: "w-5 h-5" },
-    { color: "#ff00fa", size: "w-20 h-20", numberSize: "w-5 h-5" },
-  ];
+	// Define colors and sizes for each position
+	const positions = [
+		{ color: "#ffb600", size: "w-28 h-28", numberSize: "w-8 h-8" },
+		{ color: "#0099ff", size: "w-20 h-20", numberSize: "w-5 h-5" },
+		{ color: "#ff00fa", size: "w-20 h-20", numberSize: "w-5 h-5" },
+	];
 
-  // Function to render each user
-  const renderUser = (user, index) => {
-    const position = positions[index];
-    return (
-      <div key={user.user_id} className="flex flex-col items-center">
-        <div className="relative">
-          <div
-            className={`flex items-center justify-center border-2 rounded-full ${position.size} bg-dark-blue`}
-            style={{ borderColor: position.color }}
-          >
-            <div
-              className={`absolute flex items-center justify-center ${position.numberSize} px-3 py-3 rounded-full -left-2 top-2`}
-              style={{ backgroundColor: position.color }}
-            >
-              <span className="text-base text-white">{index + 1}</span>
-            </div>
-          </div>
-        </div>
-        <div className="mt-2 text-lg font-bold text-white">
-          {user.users?.username || "Unknown User"}
-        </div>
-        <div
-          className="px-3.5 py-2 mt-2 text-base font-bold text-white rounded-3xl"
-          style={{ backgroundColor: position.color }}
-        >
-          {user.daily_change_percentage >= 0 ? "+" : "-"}{" "}
-          {Math.abs(user.daily_change_percentage).toFixed(2)}%
-        </div>
-      </div>
-    );
-  };
+	// Function to render each user
+	const renderUser = (user, index) => {
+		const position = positions[index];
+		return (
+			<div key={user.user_id} className="flex flex-col items-center">
+				<div className="relative">
+					<div
+						className={`flex items-center justify-center border-2 rounded-full overflow-hidden ${position.size} bg-dark-blue`}
+						style={{ borderColor: position.color }}
+					>
+						<Image
+							src={user.users.avatar_url}
+							alt="User Avatar"
+							layout="fill"
+							objectFit="cover"
+							className="p-0.5 rounded-full"
+						/>
+						<div
+							className={`absolute flex items-center justify-center ${position.numberSize} px-3 py-3 rounded-full -left-2 top-2`}
+							style={{ backgroundColor: position.color }}
+						>
+							<span className="text-base text-white">
+								{index + 1}
+							</span>
+						</div>
+					</div>
+				</div>
+				<div className="mt-2 text-lg font-bold text-white">
+					{user.users?.username || "Unknown User"}
+				</div>
+				<div
+					className="px-3.5 py-2 mt-2 text-base font-bold text-white rounded-3xl"
+					style={{ backgroundColor: position.color }}
+				>
+					{user.daily_change_percentage >= 0 ? "+" : "-"}{" "}
+					{Math.abs(user.daily_change_percentage).toFixed(2)}%
+				</div>
+			</div>
+		);
+	};
 
-  return (
-    <div className="flex items-baseline justify-center gap-5">
-      {topThree.map((user, index) => renderUser(user, index))}
-    </div>
-  );
+	return (
+		<div className="flex items-baseline justify-center gap-5">
+			{topThree.map((user, index) => renderUser(user, index))}
+		</div>
+	);
 }
 
 export default TopUsers;
@@ -2210,46 +2253,58 @@ export default TopUsers;
 File: components/ui/PartyCard.js
 Content:
 import { useState } from "react";
-import Link from "next/link";
 import { Pencil } from "lucide-react";
 import EditPartyModal from "../EditPartyModal";
+import { useRouter } from "next/router";
 
-function PartyCard({ group }) {
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+function PartyCard({ group, onClick }) {
+	const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+	const router = useRouter();
 
-  return (
-    <>
-      <div className="flex items-center justify-between w-screen max-w-xs p-3.5 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink">
-        <Link href={`/group/${group.id}`}>
-          <div className="flex flex-col justify-center">
-            <span className="text-xl">{group.name}</span>
-            <span className="text-base text-white/50">
-              {group.members_count} members
-            </span>
-          </div>
-        </Link>
-        <div>
-          <button
-            className="p-2 rounded-full bg-primary-blue"
-            onClick={() => setIsEditModalOpen(true)}
-          >
-            <Pencil />
-          </button>
-        </div>
-      </div>
-      <EditPartyModal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        groupId={group.id}
-        groupName={group.name}
-      />
-    </>
-  );
+	const handleClick = (e) => {
+		e.preventDefault();
+		onClick(group);
+		router.push(`/group/${group.id}`);
+	};
+
+	const handleEditClick = (e) => {
+		e.stopPropagation();
+		e.preventDefault();
+		setIsEditModalOpen(true);
+	};
+
+	return (
+		<>
+			<div
+				className="flex items-center justify-between w-full max-w-xs p-3.5 text-white duration-300 bg-dark-blue rounded-3xl sm:max-w-lg hover:bg-primary-pink cursor-pointer"
+				onClick={handleClick}
+			>
+				<div className="flex flex-col justify-center">
+					<span className="text-xl">{group.name}</span>
+					<span className="text-base text-white/50">
+						{group.members_count} members
+					</span>
+				</div>
+				<button
+					className="p-2 rounded-full bg-primary-blue"
+					onClick={handleEditClick}
+				>
+					<Pencil />
+				</button>
+			</div>
+
+			<EditPartyModal
+				isOpen={isEditModalOpen}
+				onClose={() => setIsEditModalOpen(false)}
+				groupId={group.id}
+				groupName={group.name}
+				groupMembers={group.group_members}
+			/>
+		</>
+	);
 }
 
 export default PartyCard;
-
-//   md:max-w-lg w-screen max-w-md
 
 
 ==================================================
@@ -2260,21 +2315,21 @@ import React from "react";
 import Loader from "./Loader";
 
 const CreateBtn = ({ onClick, loading, text }) => {
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-screen max-w-md md:max-w-lg py-5"
-    >
-      {loading ? (
-        <div className="flex items-center justify-center w-full h-full">
-          <Loader size={24} /> {/* Adjust size as needed */}
-        </div>
-      ) : (
-        <span className="text-center text-white text-md">{text}</span>
-      )}
-    </button>
-  );
+	return (
+		<button
+			onClick={onClick}
+			disabled={loading}
+			className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-full max-w-md md:max-w-lg py-5"
+		>
+			{loading ? (
+				<div className="flex items-center justify-center w-full h-full">
+					<Loader size={24} /> {/* Adjust size as needed */}
+				</div>
+			) : (
+				<span className="text-center text-white text-md">{text}</span>
+			)}
+		</button>
+	);
 };
 
 export default CreateBtn;
@@ -2337,35 +2392,35 @@ File: components/ui/UserCard.js
 Content:
 import Image from "next/image";
 
-function UserCard({ id, src, name, count }) {
-  const isPositive = count >= 0;
-  const formattedCount = Math.abs(count).toFixed(2);
+function UserCard({ id, avatar, name, count }) {
+	const isPositive = count >= 0;
+	const formattedCount = Math.abs(count).toFixed(2);
 
-  return (
-    <div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-lg">
-      <div className="flex items-center gap-3.5">
-        <span className="text-xl text-center text-white/60">{id}</span>
-        <Image
-          width={40}
-          height={40}
-          alt="User Avatar"
-          src={src || "/sample-img.png"}
-          className="w-12 h-12 rounded-full"
-        />
-        <p className="text-xl">{name}</p>
-      </div>
+	return (
+		<div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-sm md:max-w-lg">
+			<div className="flex items-center gap-3.5">
+				<span className="text-xl text-center text-white/60">{id}</span>
+				<Image
+					width={40}
+					height={40}
+					alt="User Avatar"
+					src={avatar || "/sample-img.png"}
+					className="w-12 h-12 rounded-full"
+				/>
+				<p className="text-xl">{name}</p>
+			</div>
 
-      <div
-        className={`px-3.5 py-2 ${
-          isPositive ? "bg-primary-blue" : "bg-red-500"
-        } rounded-full justify-start items-center gap-3.5 flex`}
-      >
-        <span>
-          {isPositive ? "+" : "-"} {formattedCount}%
-        </span>
-      </div>
-    </div>
-  );
+			<div
+				className={`px-3.5 py-2 ${
+					isPositive ? "bg-primary-blue" : "bg-red-500"
+				} rounded-full justify-start items-center gap-3.5 flex`}
+			>
+				<span>
+					{isPositive ? "+" : "-"} {formattedCount}%
+				</span>
+			</div>
+		</div>
+	);
 }
 
 export default UserCard;
@@ -2671,7 +2726,7 @@ export const SolanaProvider = ({ children }) => {
 };
 
 export const shortenAddress = (address) => {
-  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  return `${address.slice(0, 8)}...${address.slice(-8)}`;
 };
 
 
@@ -2710,6 +2765,30 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Configure Supabase storage
+const AVATAR_BUCKET = "avatars";
+
+export const uploadAvatar = async (file, path) => {
+  const { data, error } = await supabase.storage
+    .from(AVATAR_BUCKET)
+    .upload(path, file);
+
+  if (error) throw error;
+
+  return data;
+};
+
+export const getAvatarUrl = (path) => {
+  const {
+    data: { publicUrl },
+    error,
+  } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(path);
+
+  if (error) throw error;
+
+  return publicUrl;
+};
 
 
 ==================================================

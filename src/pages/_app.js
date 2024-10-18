@@ -4,15 +4,15 @@ import { WalletConnectionProvider } from "../context/WalletConnectionProvider";
 import Layout from "../components/Layout";
 
 function MyApp({ Component, pageProps }) {
-	return (
-		<SolanaProvider>
-			<WalletConnectionProvider>
-				<Layout>
-					<Component {...pageProps} />
-				</Layout>
-			</WalletConnectionProvider>
-		</SolanaProvider>
-	);
+  return (
+    <SolanaProvider>
+      <WalletConnectionProvider>
+        <Layout>
+          <Component {...pageProps} />
+        </Layout>
+      </WalletConnectionProvider>
+    </SolanaProvider>
+  );
 }
 
 export default MyApp;

@@ -5,20 +5,24 @@ import UserProfile from "./UserProfile";
 import PartySwitcher from "./PartySwitcher";
 import { useWalletConnection } from "@/context/WalletConnectionProvider";
 import { useRouter } from "next/router";
+import Loader from "./ui/Loader";
 
 const Navbar = () => {
   const router = useRouter();
-  const { user } = useWalletConnection();
+  const { user, isLoading, isAuthenticated, publicKey, checkAndSetAuthState } =
+    useWalletConnection();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
   const [selectedParty, setSelectedParty] = useState(null);
   const [userParties, setUserParties] = useState([]);
 
   useEffect(() => {
-    if (user?.wallet_address) {
+    if (publicKey && !isAuthenticated && !isLoading) {
+      router.push("/");
+    } else if (isAuthenticated && user?.wallet_address) {
       fetchUserParties(user.wallet_address);
     }
-  }, [user]);
+  }, [isAuthenticated, user, publicKey, isLoading]);
 
   const fetchUserParties = async (walletAddress) => {
     try {
@@ -26,23 +30,36 @@ const Navbar = () => {
       const data = await response.json();
       setUserParties(data);
       if (data.length > 0 && !selectedParty) {
-        const firstParty = data[0]; // Select the first party instead of a random one
+        const firstParty = data[0];
         setSelectedParty(firstParty);
         router.push(`/group/${firstParty.id}`);
       }
     } catch (error) {
-      console.error("Error fetching user parties:", error);
+      console.error("Navbar: Error fetching user parties:", error);
     }
   };
 
-  const toggleUserProfile = () => setShowUserProfile(!showUserProfile);
-  const togglePartySwitcher = () => setShowPartySwitcher(!showPartySwitcher);
+  const toggleUserProfile = () => {
+    setShowUserProfile(!showUserProfile);
+  };
+
+  const togglePartySwitcher = () => {
+    setShowPartySwitcher(!showPartySwitcher);
+  };
 
   const handlePartySelect = (party) => {
     setSelectedParty(party);
     setShowPartySwitcher(false);
     router.push(`/group/${party.id}`);
   };
+
+  if (isLoading) {
+    return <Loader />;
+  }
+
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   return (
     <nav className="h-16 px-6 py-3.5 justify-center items-center gap-3.5 inline-flex w-full">

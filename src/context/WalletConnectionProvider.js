@@ -24,25 +24,47 @@ export const WalletConnectionProvider = ({ children }) => {
     logout: authLogout,
   } = useWalletAuth();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const checkAndSetAuthState = useCallback(async () => {
+    setIsLoading(true);
     const authCookie = getAuthCookie();
-    if (authCookie && connected && publicKey) {
+
+    if (connected && publicKey) {
       const existingUser = await checkWalletExists(publicKey.toString());
+
       if (existingUser) {
-        await loginUser(existingUser);
+        const loggedInUser = await loginUser(existingUser);
         setIsAuthenticated(true);
-        setAuthCookie(existingUser);
-        return { isAuthenticated: true, publicKey: publicKey.toString() };
+        setAuthCookie(loggedInUser);
+        setIsLoading(false);
+        return {
+          isAuthenticated: true,
+          publicKey: publicKey.toString(),
+          user: loggedInUser,
+        };
+      } else {
+        setIsAuthenticated(false);
+        removeAuthCookie();
+        setIsLoading(false);
+        return {
+          isAuthenticated: false,
+          publicKey: publicKey.toString(),
+          user: null,
+        };
       }
+    } else if (authCookie) {
+      removeAuthCookie();
     }
+
     setIsAuthenticated(false);
-    return { isAuthenticated: false, publicKey: null };
+    setIsLoading(false);
+    return { isAuthenticated: false, publicKey: null, user: null };
   }, [connected, publicKey, checkWalletExists, loginUser]);
 
   useEffect(() => {
     checkAndSetAuthState();
-  }, [checkAndSetAuthState]);
+  }, [checkAndSetAuthState, connected, publicKey]);
 
   const logout = useCallback(() => {
     disconnect();
@@ -57,6 +79,7 @@ export const WalletConnectionProvider = ({ children }) => {
     publicKey: publicKey?.toString(),
     logout,
     checkAndSetAuthState,
+    isLoading,
   };
 
   return (
