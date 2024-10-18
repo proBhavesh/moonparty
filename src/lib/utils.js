@@ -13,3 +13,11 @@ export const formatCurrency = (value) => {
 export const generateInviteLink = (groupId) => {
   return `${process.env.NEXT_PUBLIC_BASE_URL}/group/join/${groupId}`;
 };
+
+export const sanitizeFileName = (fileName) => {
+  // Remove spaces and special characters, keep only alphanumeric and some safe characters
+  const sanitized = fileName.replace(/[^a-z0-9.-]/gi, "_");
+
+  // Ensure the file name is not too long
+  return sanitized.slice(0, 100);
+};

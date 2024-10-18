@@ -7,221 +7,221 @@ import { X } from "lucide-react";
 import LoadingAnimation from "@/components/ui/Loader";
 import { supabase } from "../lib/supabase";
 import Image from "next/image";
+import { sanitizeFileName } from "../lib/utils";
 
 const WalletConnectButton = dynamic(
-	() => import("../components/WalletConnectButton"),
-	{ ssr: false }
+  () => import("../components/WalletConnectButton"),
+  { ssr: false }
 );
 
 export default function Home() {
-	const router = useRouter();
-	const { isAuthenticated, user, publicKey } = useWalletConnection();
-	const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
-	const [username, setUsername] = useState("");
-	const [walletChecked, setWalletChecked] = useState(false);
-	const [isCreating, setIsCreating] = useState(false);
-	const [avatarFile, setAvatarFile] = useState(null);
-	const [avatarPreview, setAvatarPreview] = useState(null);
+  const router = useRouter();
+  const { isAuthenticated, user, publicKey, checkAndSetAuthState } =
+    useWalletConnection();
+  const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
+  const [username, setUsername] = useState("");
+  const [walletChecked, setWalletChecked] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
 
-	const checkWallet = useCallback(async () => {
-		if (publicKey && !walletChecked) {
-			const existingUser = await checkWalletExists(publicKey);
-			if (existingUser) {
-				await loginUser(existingUser);
-				redirectToFirstParty(existingUser.wallet_address);
-			}
-			setWalletChecked(true);
-		}
-	}, [publicKey, walletChecked, checkWalletExists, loginUser]);
+  const checkWallet = useCallback(async () => {
+    if (publicKey && !walletChecked) {
+      const existingUser = await checkWalletExists(publicKey);
+      if (existingUser) {
+        await loginUser(existingUser);
+        await checkAndSetAuthState();
+      }
+      setWalletChecked(true);
+    }
+  }, [
+    publicKey,
+    walletChecked,
+    checkWalletExists,
+    loginUser,
+    checkAndSetAuthState,
+  ]);
 
-	useEffect(() => {
-		checkWallet();
-	}, [checkWallet]);
+  useEffect(() => {
+    checkWallet();
+  }, [checkWallet]);
 
-	useEffect(() => {
-		if (isAuthenticated && user) {
-			redirectToFirstParty(user.wallet_address);
-		}
-	}, [isAuthenticated, user]);
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      redirectToFirstParty(user.wallet_address);
+    }
+  }, [isAuthenticated, user]);
 
-	const redirectToFirstParty = async (walletAddress) => {
-		try {
-			const response = await fetch(`/api/dashboard/${walletAddress}`);
-			const parties = await response.json();
-			if (parties.length > 0) {
-				router.push(`/group/${parties[0].id}`);
-			} else {
-				// If no parties exist, redirect to dashboard or show a message
-				router.push("/create-group");
-			}
-		} catch (error) {
-			console.error("Error fetching user parties:", error);
-			router.push("/dashboard"); // Fallback to dashboard in case of error
-		}
-	};
+  const redirectToFirstParty = async (walletAddress) => {
+    try {
+      const response = await fetch(`/api/dashboard/${walletAddress}`);
+      const parties = await response.json();
+      if (parties.length > 0) {
+        router.push(`/group/${parties[0].id}`);
+      } else {
+        router.push("/create-group");
+      }
+    } catch (error) {
+      console.error("Error fetching user parties:", error);
+      router.push("/dashboard");
+    }
+  };
 
-	const handleAvatarChange = (e) => {
-		const file = e.target.files[0];
-		if (file) {
-			setAvatarFile(file);
-			setAvatarPreview(URL.createObjectURL(file));
-		}
-	};
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAvatarFile(file);
+      setAvatarPreview(URL.createObjectURL(file));
+    }
+  };
 
-	const handleCreate = async () => {
-		if (username && publicKey && avatarFile) {
-			setIsCreating(true);
-			try {
-				// Upload avatar to Supabase Storage
-				const { data: uploadData, error: uploadError } =
-					await supabase.storage
-						.from("avatars")
-						.upload(`${publicKey}/${avatarFile.name}`, avatarFile);
+  const handleCreate = async () => {
+    if (username && publicKey && avatarFile) {
+      setIsCreating(true);
+      try {
+        const sanitizedFileName = sanitizeFileName(avatarFile.name);
+        const fileExt = sanitizedFileName.split(".").pop();
+        const fileName = `${Date.now()}_${sanitizedFileName}`;
 
-				if (uploadError) throw uploadError;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(`${publicKey}/${fileName}`, avatarFile, {
+            contentType: `image/${fileExt}`,
+          });
 
-				// Get public URL of the uploaded avatar
-				const {
-					data: { publicUrl },
-				} = supabase.storage
-					.from("avatars")
-					.getPublicUrl(uploadData.path);
+        if (uploadError) throw uploadError;
 
-				// Create user with avatar URL
-				const user = await authenticateUser(username, publicUrl);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("avatars").getPublicUrl(uploadData.path);
 
-				if (user) {
-					// Create a party for the user
-					await createParty(user.id, username);
-					redirectToFirstParty(user.wallet_address);
-				} else {
-					throw new Error("Failed to create user");
-				}
-			} catch (error) {
-				console.error("Error creating user or party:", error);
-				setIsCreating(false);
-			}
-		}
-	};
+        const newUser = await authenticateUser(username, publicUrl);
 
-	const createParty = async (userId, partyName) => {
-		try {
-			const response = await fetch("/api/groups/create", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					name: partyName,
-					creatorWallet: publicKey,
-				}),
-			});
+        if (newUser) {
+          await createParty(newUser.id, username);
+          await checkAndSetAuthState();
+          redirectToFirstParty(newUser.wallet_address);
+        } else {
+          throw new Error("Failed to create user");
+        }
+      } catch (error) {
+        console.error("Error creating user or party:", error);
+        setIsCreating(false);
+      }
+    }
+  };
 
-			if (!response.ok) {
-				throw new Error("Failed to create party");
-			}
+  const createParty = async (userId, partyName) => {
+    try {
+      const response = await fetch("/api/groups/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: partyName,
+          creatorWallet: publicKey,
+        }),
+      });
 
-			const data = await response.json();
-			return data;
-		} catch (error) {
-			console.error("Error creating party:", error);
-			throw error;
-		}
-	};
+      if (!response.ok) {
+        throw new Error("Failed to create party");
+      }
 
-	const handleDisconnect = () => {
-		// Implement wallet disconnection logic here
-		setWalletChecked(false);
-	};
+      return await response.json();
+    } catch (error) {
+      console.error("Error creating party:", error);
+      throw error;
+    }
+  };
 
-	return (
-		<div className="flex flex-col items-center justify-center h-full text-white">
-			<div className="flex flex-col items-center w-full max-w-xs text-center sm:max-w-sm md:max-w-lg">
-				<h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
-					🌝 moonparty
-				</h1>
+  const handleDisconnect = () => {
+    setWalletChecked(false);
+    // Add any additional disconnect logic here
+  };
 
-				{!publicKey ? (
-					<div className="mb-4">
-						<WalletConnectButton />
-					</div>
-				) : walletChecked && !user ? (
-					<>
-						<input
-							type="text"
-							placeholder="Add a username..."
-							value={username}
-							onChange={(e) => setUsername(e.target.value)}
-							className="w-full py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
-						/>
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-white">
+      <div className="flex flex-col items-center w-full max-w-xs text-center sm:max-w-sm md:max-w-lg">
+        <h1 className="pt-10 mb-8 text-4xl font-bold font-reem-kufi-fun">
+          🌝 moonparty
+        </h1>
 
-						{/* avatar uploader */}
-						<div className="flex justify-center mb-4">
-							<input
-								type="file"
-								accept="image/*"
-								onChange={handleAvatarChange}
-								className="hidden"
-								id="avatar-upload"
-							/>
-							<label
-								htmlFor="avatar-upload"
-								className="cursor-pointer"
-							>
-								<Image
-									width={100}
-									height={100}
-									alt={"avatar image"}
-									src={"/avatar-default.svg"}
-								/>
-							</label>
-						</div>
+        {!publicKey ? (
+          <div className="mb-4">
+            <WalletConnectButton />
+          </div>
+        ) : walletChecked && !user ? (
+          <>
+            <input
+              type="text"
+              placeholder="Add a username..."
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full py-5 mb-4 text-center text-white placeholder-purple-300 rounded-3xl bg-dark-blue"
+            />
 
-						{/* wallet address */}
-						<div className="relative flex w-full gap-5 p-4 mb-4 text-white border-2 border-white border-dashed rounded-3xl">
-							<div className="flex w-full">
-								<input
-									type="text"
-									value={publicKey}
-									readOnly
-									className="w-full mr-3 overflow-hidden bg-transparent focus:outline-none"
-								/>
-							</div>
-							<div>
-								<button
-									className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
-									onClick={handleDisconnect}
-								>
-									<X size={20} />
-								</button>
-							</div>
-						</div>
+            {/* avatar uploader */}
+            <div className="flex justify-center mb-4">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+                id="avatar-upload"
+              />
+              <label htmlFor="avatar-upload" className="cursor-pointer">
+                <Image
+                  width={100}
+                  height={100}
+                  alt={"avatar image"}
+                  src={avatarPreview || "/avatar-default.svg"}
+                  className="rounded-full object-cover"
+                />
+              </label>
+            </div>
 
-						{/* create button */}
-						<div className="flex justify-center w-full">
-							<button
-								onClick={handleCreate}
-								disabled={
-									!username || !avatarFile || isCreating
-								}
-								className={`w-full p-4 rounded-3xl ${
-									username && avatarFile && !isCreating
-										? "bg-primary-pink hover:bg-primary-pink/90"
-										: "bg-dark-blue cursor-not-allowed"
-								} transition-colors duration-300 flex justify-center items-center`}
-							>
-								{isCreating ? (
-									<LoadingAnimation size={24} />
-								) : (
-									"Create"
-								)}
-							</button>
-						</div>
-					</>
-				) : (
-					<p>Checking wallet...</p>
-				)}
-			</div>
-		</div>
-	);
+            {/* wallet address */}
+            <div className="relative flex w-full gap-5 p-4 mb-4 text-white border-2 border-white border-dashed rounded-3xl">
+              <div className="flex w-full">
+                <input
+                  type="text"
+                  value={publicKey}
+                  readOnly
+                  className="w-full mr-3 overflow-hidden bg-transparent focus:outline-none"
+                />
+              </div>
+              <div>
+                <button
+                  className="absolute text-white transform -translate-y-1/2 right-4 top-1/2"
+                  onClick={handleDisconnect}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* create button */}
+            <div className="flex justify-center w-full">
+              <button
+                onClick={handleCreate}
+                disabled={!username || !avatarFile || isCreating}
+                className={`w-full p-4 rounded-3xl ${
+                  username && avatarFile && !isCreating
+                    ? "bg-primary-pink hover:bg-primary-pink/90"
+                    : "bg-dark-blue cursor-not-allowed"
+                } transition-colors duration-300 flex justify-center items-center`}
+              >
+                {isCreating ? <LoadingAnimation size={24} /> : "Create"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p>
+            <LoadingAnimation size={24} />
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }

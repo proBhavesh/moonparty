@@ -4,40 +4,22 @@ import { ChevronDown } from "lucide-react";
 import UserProfile from "./UserProfile";
 import PartySwitcher from "./PartySwitcher";
 import { useWalletConnection } from "@/context/WalletConnectionProvider";
+import { useParty } from "@/context/PartyContext";
 import { useRouter } from "next/router";
 import Loader from "./ui/Loader";
 
 const Navbar = () => {
   const router = useRouter();
-  const { user, isLoading, isAuthenticated, publicKey, checkAndSetAuthState } =
-    useWalletConnection();
+  const { user, isLoading, isAuthenticated, publicKey } = useWalletConnection();
+  const { selectedParty, userParties, selectParty } = useParty();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
-  const [selectedParty, setSelectedParty] = useState(null);
-  const [userParties, setUserParties] = useState([]);
 
   useEffect(() => {
     if (publicKey && !isAuthenticated && !isLoading) {
       router.push("/");
-    } else if (isAuthenticated && user?.wallet_address) {
-      fetchUserParties(user.wallet_address);
     }
-  }, [isAuthenticated, user, publicKey, isLoading]);
-
-  const fetchUserParties = async (walletAddress) => {
-    try {
-      const response = await fetch(`/api/dashboard/${walletAddress}`);
-      const data = await response.json();
-      setUserParties(data);
-      if (data.length > 0 && !selectedParty) {
-        const firstParty = data[0];
-        setSelectedParty(firstParty);
-        router.push(`/group/${firstParty.id}`);
-      }
-    } catch (error) {
-      console.error("Navbar: Error fetching user parties:", error);
-    }
-  };
+  }, [isAuthenticated, publicKey, isLoading, router]);
 
   const toggleUserProfile = () => {
     setShowUserProfile(!showUserProfile);
@@ -48,7 +30,7 @@ const Navbar = () => {
   };
 
   const handlePartySelect = (party) => {
-    setSelectedParty(party);
+    selectParty(party);
     setShowPartySwitcher(false);
     router.push(`/group/${party.id}`);
   };

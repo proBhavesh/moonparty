@@ -31,9 +31,6 @@ export default async function handler(req, res) {
       .select("group_id")
       .eq("user_id", userData.id);
 
-    console.log("userData", userData);
-    console.log("userGroups", userGroups);
-
     if (groupError) throw groupError;
 
     if (!userGroups || userGroups.length === 0) {

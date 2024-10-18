@@ -81,7 +81,7 @@ const EditPartyModal = ({ isOpen, onClose, groupId, groupName }) => {
           />
         </button>
         <div className="flex flex-col items-center gap-2 mb-4 -mt-8">
-          <h2 className="text-xl font-medium">Edit Party</h2>
+          <h2 className="text-xl font-medium text-white">Edit Party</h2>
         </div>
 
         <div className="py-5 mb-4 bg-dark-blue rounded-3xl">
