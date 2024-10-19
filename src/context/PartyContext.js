@@ -6,7 +6,8 @@ const PartyContext = createContext();
 
 export const PartyProvider = ({ children }) => {
   const [selectedParty, setSelectedParty] = useState(null);
-  const [userParties, setUserParties] = useState([]);
+  const [userParties, setUserParties] = useState([]); // All parties user is a member of
+  const [createdParties, setCreatedParties] = useState([]); // Parties created by the user
   const { user, isAuthenticated } = useWalletConnection();
   const router = useRouter();
 
@@ -20,6 +21,10 @@ export const PartyProvider = ({ children }) => {
     try {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
+
+      // Separate created parties and all parties
+      const created = data.filter((party) => party.created_by === user.id);
+      setCreatedParties(created);
       setUserParties(data);
 
       if (data.length > 0) {
@@ -56,7 +61,6 @@ export const PartyProvider = ({ children }) => {
     if (party) {
       setSelectedParty(party);
     } else {
-      // If the party is not in userParties, fetch its details
       try {
         const response = await fetch(`/api/groups/${groupId}/details`);
         if (response.ok) {
@@ -64,10 +68,11 @@ export const PartyProvider = ({ children }) => {
           setSelectedParty({
             id: groupDetails.id,
             name: groupDetails.name,
-            // Add any other necessary fields here
           });
-          // Optionally, you can also update userParties here
           setUserParties((prevParties) => [...prevParties, groupDetails]);
+          if (groupDetails.created_by === user.id) {
+            setCreatedParties((prevParties) => [...prevParties, groupDetails]);
+          }
         } else {
           console.error("Failed to fetch group details");
         }
@@ -82,6 +87,7 @@ export const PartyProvider = ({ children }) => {
       value={{
         selectedParty,
         userParties,
+        createdParties,
         selectParty,
         fetchUserParties,
         updateSelectedParty,
