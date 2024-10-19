@@ -176,7 +176,7 @@ export default function Home() {
                   height={100}
                   alt={"avatar image"}
                   src={avatarPreview || "/avatar-default.svg"}
-                  className="rounded-full object-cover"
+                  className="h-24 w-24 rounded-full object-cover"
                 />
               </label>
             </div>

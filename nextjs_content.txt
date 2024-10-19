@@ -401,7 +401,7 @@ export default function Home() {
                   height={100}
                   alt={"avatar image"}
                   src={avatarPreview || "/avatar-default.svg"}
-                  className="rounded-full object-cover"
+                  className="h-24 w-24 rounded-full object-cover"
                 />
               </label>
             </div>
@@ -1330,6 +1330,7 @@ Content:
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "../../../context/WalletConnectionProvider";
+import { useParty } from "../../../context/PartyContext";
 import LoadingAnimation from "@/components/ui/Loader";
 
 export default function JoinGroup() {
@@ -1337,6 +1338,7 @@ export default function JoinGroup() {
   const { inviteLink } = router.query;
   const { isAuthenticated, publicKey, isLoading, checkAndSetAuthState } =
     useWalletConnection();
+  const { selectParty } = useParty();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
   const [isAlreadyMember, setIsAlreadyMember] = useState(false);
@@ -1366,10 +1368,14 @@ export default function JoinGroup() {
         1000
       );
     } else if (redirectCountdown === 0) {
-      router.push("/");
+      if (isAlreadyMember && groupId) {
+        router.push(`/group/${groupId}`);
+      } else {
+        router.push("/");
+      }
     }
     return () => clearTimeout(timer);
-  }, [redirectCountdown, router]);
+  }, [redirectCountdown, router, isAlreadyMember, groupId]);
 
   const joinGroup = async () => {
     if (joining) return;
@@ -1401,6 +1407,7 @@ export default function JoinGroup() {
       ) {
         setIsAlreadyMember(true);
         setGroupId(data.groupId);
+        selectParty({ id: data.groupId, name: "Existing Group" }); // Update PartyContext
         setRedirectCountdown(3); // Start countdown for already-member users
       } else if (!response.ok) {
         throw new Error(data.message || "Failed to join group");
@@ -1448,8 +1455,8 @@ export default function JoinGroup() {
           role="alert"
         >
           <span className="block sm:inline">
-            You are already a member of this group. Redirecting to home page in{" "}
-            {redirectCountdown} seconds...
+            You are already a member of this group. Redirecting to the group
+            page in {redirectCountdown} seconds...
           </span>
         </div>
       </div>
@@ -1800,8 +1807,10 @@ const UserProfile = ({ onClose }) => {
               <p className="text-xl text-white">
                 {user.username || "Anonymous"}
               </p>
-
-              <div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2">
+              <div className="px-3.5 py-2 bg-dark-blue rounded-full items-center gap-3.5 flex text-white">
+                <span>{25}%</span>
+              </div>
+              <div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2 justify-center font-bold">
                 <p className="text-sm text-white/60">
                   {shortenAddress(user.wallet_address)}
                 </p>
@@ -2426,34 +2435,34 @@ Content:
 import Image from "next/image";
 
 function UserCard({ id, avatar, name, count }) {
-	const isPositive = count >= 0;
-	const formattedCount = Math.abs(count).toFixed(2);
+  const isPositive = count >= 0;
+  const formattedCount = Math.abs(count).toFixed(2);
 
-	return (
-		<div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-sm md:max-w-lg">
-			<div className="flex items-center gap-3.5">
-				<span className="text-xl text-center text-white/60">{id}</span>
-				<Image
-					width={40}
-					height={40}
-					alt="User Avatar"
-					src={avatar || "/sample-img.png"}
-					className="w-12 h-12 rounded-full"
-				/>
-				<p className="text-xl">{name}</p>
-			</div>
+  return (
+    <div className="flex items-center justify-between w-screen max-w-xs p-4 text-white bg-dark-blue rounded-3xl sm:max-w-sm md:max-w-lg">
+      <div className="flex items-center gap-3.5">
+        <span className="text-xl text-center text-white/60">{id}</span>
+        <Image
+          width={40}
+          height={40}
+          alt="User Avatar"
+          src={avatar || "/sample-img.png"}
+          className="w-12 h-12 object-cover rounded-full"
+        />
+        <p className="text-xl">{name}</p>
+      </div>
 
-			<div
-				className={`px-3.5 py-2 ${
-					isPositive ? "bg-primary-blue" : "bg-red-500"
-				} rounded-full justify-start items-center gap-3.5 flex`}
-			>
-				<span>
-					{isPositive ? "+" : "-"} {formattedCount}%
-				</span>
-			</div>
-		</div>
-	);
+      <div
+        className={`px-3.5 py-2 ${
+          isPositive ? "bg-primary-blue" : "bg-red-500"
+        } rounded-full justify-start items-center gap-3.5 flex`}
+      >
+        <span>
+          {isPositive ? "+" : "-"} {formattedCount}%
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default UserCard;
@@ -2548,7 +2557,6 @@ export const setAuthCookie = (user) => {
 
 export const getAuthCookie = (options = {}) => {
   if (typeof window !== "undefined") {
-    console.log("get auth cookie client side");
     // Client-side
     const cookie = Cookies.get(AUTH_COOKIE_NAME);
     return cookie ? JSON.parse(cookie) : null;

@@ -88,8 +88,10 @@ const UserProfile = ({ onClose }) => {
               <p className="text-xl text-white">
                 {user.username || "Anonymous"}
               </p>
-
-              <div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2">
+              <div className="px-3.5 py-2 bg-dark-blue rounded-full items-center gap-3.5 flex text-white">
+                <span>{25}%</span>
+              </div>
+              <div className="w-full p-3.5 text-white border-2 border-white border-dashed rounded-3xl bg-primary-blue focus:outline-none mt-2 justify-center font-bold">
                 <p className="text-sm text-white/60">
                   {shortenAddress(user.wallet_address)}
                 </p>
