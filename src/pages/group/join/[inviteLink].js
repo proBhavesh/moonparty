@@ -9,7 +9,7 @@ export default function JoinGroup() {
   const { inviteLink } = router.query;
   const { isAuthenticated, publicKey, isLoading, checkAndSetAuthState } =
     useWalletConnection();
-  const { fetchUserParties } = useParty();
+  const { fetchUserParties, updateSelectedParty } = useParty();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
   const [isAlreadyMember, setIsAlreadyMember] = useState(false);
@@ -79,6 +79,7 @@ export default function JoinGroup() {
         setIsAlreadyMember(true);
         setGroupId(data.groupId);
         await fetchUserParties(publicKey.toString(), data.groupId);
+        updateSelectedParty(data.groupId);
         setRedirectCountdown(3);
       } else if (!response.ok) {
         throw new Error(data.message || "Failed to join group");
@@ -86,6 +87,7 @@ export default function JoinGroup() {
         throw new Error("Invalid response from server");
       } else {
         await fetchUserParties(publicKey.toString(), data.member.group_id);
+        updateSelectedParty(data.member.group_id);
         router.push(`/group/${data.member.group_id}`);
       }
     } catch (err) {

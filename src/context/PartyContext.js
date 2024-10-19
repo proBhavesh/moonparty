@@ -1,3 +1,5 @@
+// context/PartyContext.js
+
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "./WalletConnectionProvider";
@@ -20,6 +22,7 @@ export const PartyProvider = ({ children }) => {
     try {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
+      console.log("fetchUserParties", data);
       setUserParties(data);
 
       if (data.length > 0) {
@@ -47,9 +50,26 @@ export const PartyProvider = ({ children }) => {
     router.push(`/group/${party.id}`);
   };
 
+  const updateSelectedParty = (groupId) => {
+    console.log("updateSelectedParty", groupId);
+    console.log("userParties", userParties);
+    const party = userParties.find(
+      (p) => p.id.toString() === groupId.toString()
+    );
+    if (party) {
+      setSelectedParty(party);
+    }
+  };
+
   return (
     <PartyContext.Provider
-      value={{ selectedParty, userParties, selectParty, fetchUserParties }}
+      value={{
+        selectedParty,
+        userParties,
+        selectParty,
+        fetchUserParties,
+        updateSelectedParty,
+      }}
     >
       {children}
     </PartyContext.Provider>
