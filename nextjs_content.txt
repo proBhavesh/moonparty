@@ -1281,6 +1281,7 @@ export default function GroupDetails() {
   const { id } = router.query;
   const [group, setGroup] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [calculatingPnL, setCalculatingPnL] = useState(false);
   const { isAuthenticated, publicKey } = useWalletConnection();
 
   useEffect(() => {
@@ -1294,11 +1295,53 @@ export default function GroupDetails() {
       const response = await fetch(`/api/groups/${id}`);
       const data = await response.json();
       setGroup(data);
+
+      // Check if user data is available
+      const userDataAvailable = data.group_members.some(
+        (member) =>
+          member.users.wallet_address === publicKey &&
+          member.daily_change_percentage !== null
+      );
+
+      setCalculatingPnL(!userDataAvailable);
+
+      if (!userDataAvailable) {
+        // Start polling for updates
+        pollForUpdates();
+      }
     } catch (error) {
       console.error("Error fetching group details:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const pollForUpdates = () => {
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/groups/${id}`);
+        const data = await response.json();
+        const userDataAvailable = data.group_members.some(
+          (member) =>
+            member.users.wallet_address === publicKey &&
+            member.daily_change_percentage !== null
+        );
+
+        if (userDataAvailable) {
+          setGroup(data);
+          setCalculatingPnL(false);
+          clearInterval(interval);
+        }
+      } catch (error) {
+        console.error("Error polling for updates:", error);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    // Clear interval after 2 minutes (24 attempts)
+    setTimeout(() => {
+      clearInterval(interval);
+      setCalculatingPnL(false); // Stop showing "Calculating PnL" even if data isn't available
+    }, 120000);
   };
 
   if (loading) {
@@ -1315,8 +1358,14 @@ export default function GroupDetails() {
 
   return (
     <div className="flex flex-col items-center mt-10 space-y-4">
-      <TopUsers members={group.group_members} />
-      <MembersList members={group.group_members} />
+      {calculatingPnL ? (
+        <div className="text-white">Calculating your PnL...</div>
+      ) : (
+        <>
+          <TopUsers members={group.group_members} />
+          <MembersList members={group.group_members} />
+        </>
+      )}
       {/* <GroupInviteLink inviteLink={group.invite_link} /> */}
     </div>
   );
@@ -1338,7 +1387,7 @@ export default function JoinGroup() {
   const { inviteLink } = router.query;
   const { isAuthenticated, publicKey, isLoading, checkAndSetAuthState } =
     useWalletConnection();
-  const { selectParty } = useParty();
+  const { fetchUserParties, updateSelectedParty } = useParty();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
   const [isAlreadyMember, setIsAlreadyMember] = useState(false);
@@ -1407,13 +1456,16 @@ export default function JoinGroup() {
       ) {
         setIsAlreadyMember(true);
         setGroupId(data.groupId);
-        selectParty({ id: data.groupId, name: "Existing Group" }); // Update PartyContext
-        setRedirectCountdown(3); // Start countdown for already-member users
+        await fetchUserParties(publicKey.toString(), data.groupId);
+        updateSelectedParty(data.groupId);
+        setRedirectCountdown(3);
       } else if (!response.ok) {
         throw new Error(data.message || "Failed to join group");
       } else if (!data.member || !data.member.group_id) {
         throw new Error("Invalid response from server");
       } else {
+        await fetchUserParties(publicKey.toString(), data.member.group_id);
+        updateSelectedParty(data.member.group_id);
         router.push(`/group/${data.member.group_id}`);
       }
     } catch (err) {
@@ -1941,15 +1993,38 @@ import Loader from "./ui/Loader";
 const Navbar = () => {
   const router = useRouter();
   const { user, isLoading, isAuthenticated, publicKey } = useWalletConnection();
-  const { selectedParty, userParties, selectParty } = useParty();
+  const {
+    selectedParty,
+    userParties,
+    selectParty,
+    fetchUserParties,
+    updateSelectedParty,
+  } = useParty();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
 
   useEffect(() => {
     if (publicKey && !isAuthenticated && !isLoading) {
       router.push("/");
+    } else if (isAuthenticated && userParties.length > 0) {
+      const match = router.pathname.match(/^\/group\/(\d+)$/);
+      if (match) {
+        const groupId = match[1];
+        updateSelectedParty(groupId);
+      } else if (!selectedParty) {
+        selectParty(userParties[0]);
+      }
     }
-  }, [isAuthenticated, publicKey, isLoading, router]);
+  }, [
+    isAuthenticated,
+    publicKey,
+    isLoading,
+    router,
+    selectedParty,
+    userParties,
+    selectParty,
+    updateSelectedParty,
+  ]);
 
   const toggleUserProfile = () => {
     setShowUserProfile(!showUserProfile);
@@ -2057,65 +2132,64 @@ import { X } from "lucide-react";
 import PartyCard from "./ui/PartyCard";
 import CreateBtn from "./ui/CreateBtn";
 import { useRouter } from "next/router";
+import { useParty } from "@/context/PartyContext";
 
-const PartySwitcher = ({ onClose, onSelect, parties }) => {
-	const router = useRouter();
-	const [createLoading, setCreateLoading] = useState(false);
+const PartySwitcher = ({ onClose }) => {
+  const router = useRouter();
+  const [createLoading, setCreateLoading] = useState(false);
+  const { createdParties, selectParty } = useParty();
 
-	const handleCreateClick = () => {
-		setCreateLoading(true);
-		router.push("/create-group");
-		onClose();
-	};
+  const handleCreateClick = () => {
+    setCreateLoading(true);
+    router.push("/create-group");
+    onClose();
+  };
 
-	const handleGroupClick = (group) => {
-		onSelect(group);
-		onClose();
-		router.push(`/group/${group.id}`);
-	};
+  const handleGroupClick = (group) => {
+    selectParty(group);
+    onClose();
+    router.push(`/group/${group.id}`);
+  };
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-			<div className="w-full h-[95vh] md:h-[60vh] max-w-md p-5 m-5 overflow-y-scroll rounded-3xl bg-primary-blue sm:max-w-lg flex flex-col">
-				<button className="z-20 flex justify-end w-full cursor-default">
-					<X
-						size={32}
-						className="p-2 text-white rounded-full cursor-pointer bg-dark-blue"
-						onClick={onClose}
-					/>
-				</button>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="w-full h-[95vh] md:h-[60vh] max-w-md p-5 m-5 overflow-y-scroll rounded-3xl bg-primary-blue sm:max-w-lg flex flex-col">
+        <button className="z-20 flex justify-end w-full cursor-default">
+          <X
+            size={32}
+            className="p-2 text-white rounded-full cursor-pointer bg-dark-blue"
+            onClick={onClose}
+          />
+        </button>
 
-				<h2 className="mb-4 text-xl font-medium text-center text-white">
-					My Parties
-				</h2>
+        <h2 className="mb-4 text-xl font-medium text-center text-white">
+          My Parties
+        </h2>
 
-				{parties.length > 0 ? (
-					<ul className="flex flex-col items-center flex-grow space-y-2 overflow-y-auto">
-						{parties.map((group) => (
-							<li key={group.id} className="w-full">
-								<PartyCard
-									group={group}
-									onClick={handleGroupClick}
-								/>
-							</li>
-						))}
-					</ul>
-				) : (
-					<p className="text-center text-white">
-						You have not created any parties yet.
-					</p>
-				)}
+        {createdParties.length > 0 ? (
+          <ul className="flex flex-col items-center flex-grow space-y-2 overflow-y-auto">
+            {createdParties.map((group) => (
+              <li key={group.id} className="w-full">
+                <PartyCard group={group} onClick={handleGroupClick} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-center text-white">
+            You have not created any parties yet.
+          </p>
+        )}
 
-				<div className="flex justify-center w-full mt-4">
-					<CreateBtn
-						onClick={handleCreateClick}
-						loading={createLoading}
-						text={"Create New Party"}
-					/>
-				</div>
-			</div>
-		</div>
-	);
+        <div className="flex justify-center w-full mt-4">
+          <CreateBtn
+            onClick={handleCreateClick}
+            loading={createLoading}
+            text={"Create New Party"}
+          />
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default PartySwitcher;
@@ -2853,7 +2927,8 @@ const PartyContext = createContext();
 
 export const PartyProvider = ({ children }) => {
   const [selectedParty, setSelectedParty] = useState(null);
-  const [userParties, setUserParties] = useState([]);
+  const [userParties, setUserParties] = useState([]); // All parties user is a member of
+  const [createdParties, setCreatedParties] = useState([]); // Parties created by the user
   const { user, isAuthenticated } = useWalletConnection();
   const router = useRouter();
 
@@ -2863,14 +2938,30 @@ export const PartyProvider = ({ children }) => {
     }
   }, [isAuthenticated, user]);
 
-  const fetchUserParties = async (walletAddress) => {
+  const fetchUserParties = async (walletAddress, groupId = null) => {
     try {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
+
+      // Separate created parties and all parties
+      const created = data.filter((party) => party.created_by === user.id);
+      setCreatedParties(created);
       setUserParties(data);
-      if (data.length > 0 && !selectedParty) {
-        setSelectedParty(data[0]);
-        router.push(`/group/${data[0].id}`);
+
+      if (data.length > 0) {
+        let partyToSelect;
+        if (groupId) {
+          partyToSelect = data.find(
+            (party) => party.id.toString() === groupId.toString()
+          );
+        }
+        if (!partyToSelect) {
+          partyToSelect = data[0];
+        }
+        setSelectedParty(partyToSelect);
+        if (!router.pathname.startsWith("/group/")) {
+          router.push(`/group/${partyToSelect.id}`);
+        }
       }
     } catch (error) {
       console.error("Error fetching user parties:", error);
@@ -2882,8 +2973,47 @@ export const PartyProvider = ({ children }) => {
     router.push(`/group/${party.id}`);
   };
 
+  const updateSelectedParty = async (groupId) => {
+    console.log("updateSelectedParty", groupId);
+    console.log("userParties", userParties);
+    const party = userParties.find(
+      (p) => p.id.toString() === groupId.toString()
+    );
+    if (party) {
+      setSelectedParty(party);
+    } else {
+      try {
+        const response = await fetch(`/api/groups/${groupId}/details`);
+        if (response.ok) {
+          const groupDetails = await response.json();
+          setSelectedParty({
+            id: groupDetails.id,
+            name: groupDetails.name,
+          });
+          setUserParties((prevParties) => [...prevParties, groupDetails]);
+          if (groupDetails.created_by === user.id) {
+            setCreatedParties((prevParties) => [...prevParties, groupDetails]);
+          }
+        } else {
+          console.error("Failed to fetch group details");
+        }
+      } catch (error) {
+        console.error("Error fetching group details:", error);
+      }
+    }
+  };
+
   return (
-    <PartyContext.Provider value={{ selectedParty, userParties, selectParty }}>
+    <PartyContext.Provider
+      value={{
+        selectedParty,
+        userParties,
+        createdParties,
+        selectParty,
+        fetchUserParties,
+        updateSelectedParty,
+      }}
+    >
       {children}
     </PartyContext.Provider>
   );

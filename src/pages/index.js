@@ -16,6 +16,7 @@ const WalletConnectButton = dynamic(
 
 export default function Home() {
   const router = useRouter();
+  const { pendingJoin } = router.query;
   const { isAuthenticated, user, publicKey, checkAndSetAuthState } =
     useWalletConnection();
   const { checkWalletExists, authenticateUser, loginUser } = useWalletAuth();
@@ -48,9 +49,13 @@ export default function Home() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      redirectToFirstParty(user.wallet_address);
+      if (pendingJoin) {
+        router.push(`/group/join/${pendingJoin}`);
+      } else {
+        redirectToFirstParty(user.wallet_address);
+      }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, pendingJoin, router]);
 
   const redirectToFirstParty = async (walletAddress) => {
     try {
@@ -100,7 +105,11 @@ export default function Home() {
         if (newUser) {
           await createParty(newUser.id, username);
           await checkAndSetAuthState();
-          redirectToFirstParty(newUser.wallet_address);
+          if (pendingJoin) {
+            router.push(`/group/join/${pendingJoin}`);
+          } else {
+            redirectToFirstParty(newUser.wallet_address);
+          }
         } else {
           throw new Error("Failed to create user");
         }

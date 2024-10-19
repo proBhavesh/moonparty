@@ -24,10 +24,12 @@ export default function JoinGroup() {
   }, [checkAndSetAuthState]);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && inviteLink && publicKey) {
-      joinGroup();
-    } else if (!isLoading && !isAuthenticated) {
-      setRedirectCountdown(3);
+    if (!isLoading) {
+      if (isAuthenticated && inviteLink && publicKey) {
+        joinGroup();
+      } else if (!isAuthenticated) {
+        setRedirectCountdown(3);
+      }
     }
   }, [isLoading, isAuthenticated, inviteLink, publicKey]);
 
@@ -41,12 +43,19 @@ export default function JoinGroup() {
     } else if (redirectCountdown === 0) {
       if (isAlreadyMember && groupId) {
         router.push(`/group/${groupId}`);
-      } else {
-        router.push("/");
+      } else if (!isAuthenticated) {
+        router.push(`/?pendingJoin=${inviteLink}`);
       }
     }
     return () => clearTimeout(timer);
-  }, [redirectCountdown, router, isAlreadyMember, groupId]);
+  }, [
+    redirectCountdown,
+    router,
+    isAlreadyMember,
+    groupId,
+    isAuthenticated,
+    inviteLink,
+  ]);
 
   const joinGroup = async () => {
     if (joining) return;
