@@ -1,5 +1,3 @@
-// context/PartyContext.js
-
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useWalletConnection } from "./WalletConnectionProvider";
@@ -22,7 +20,6 @@ export const PartyProvider = ({ children }) => {
     try {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
-      console.log("fetchUserParties", data);
       setUserParties(data);
 
       if (data.length > 0) {
@@ -50,7 +47,7 @@ export const PartyProvider = ({ children }) => {
     router.push(`/group/${party.id}`);
   };
 
-  const updateSelectedParty = (groupId) => {
+  const updateSelectedParty = async (groupId) => {
     console.log("updateSelectedParty", groupId);
     console.log("userParties", userParties);
     const party = userParties.find(
@@ -58,6 +55,25 @@ export const PartyProvider = ({ children }) => {
     );
     if (party) {
       setSelectedParty(party);
+    } else {
+      // If the party is not in userParties, fetch its details
+      try {
+        const response = await fetch(`/api/groups/${groupId}/details`);
+        if (response.ok) {
+          const groupDetails = await response.json();
+          setSelectedParty({
+            id: groupDetails.id,
+            name: groupDetails.name,
+            // Add any other necessary fields here
+          });
+          // Optionally, you can also update userParties here
+          setUserParties((prevParties) => [...prevParties, groupDetails]);
+        } else {
+          console.error("Failed to fetch group details");
+        }
+      } catch (error) {
+        console.error("Error fetching group details:", error);
+      }
     }
   };
 
