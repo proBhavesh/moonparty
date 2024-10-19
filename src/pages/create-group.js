@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useWalletConnection } from "../context/WalletConnectionProvider";
+import { useParty } from "../context/PartyContext";
 import { useRouter } from "next/router";
-import Loader from "@/components/ui/Loader"; // Make sure you have this component
+import Loader from "@/components/ui/Loader";
 
 export default function CreateGroup() {
   const [groupName, setGroupName] = useState("");
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { isAuthenticated, publicKey } = useWalletConnection();
+  const { isAuthenticated, publicKey, user } = useWalletConnection();
+  const { fetchUserParties, updateSelectedParty } = useParty();
   const router = useRouter();
 
   const handleSubmit = async (e) => {
@@ -38,6 +40,11 @@ export default function CreateGroup() {
       }
 
       const data = await response.json();
+
+      // Update the party list and select the new party
+      await fetchUserParties(publicKey, data.id);
+      await updateSelectedParty(data.id);
+
       router.push(`/group/${data.id}`);
     } catch (error) {
       console.error("Error creating group:", error);
@@ -79,7 +86,7 @@ export default function CreateGroup() {
           >
             {isLoading ? (
               <div className="flex items-center justify-center w-6 h-6">
-                <Loader size={24} /> {/* Adjust size as needed */}
+                <Loader size={24} />
               </div>
             ) : (
               <span className="text-center text-white text-md">

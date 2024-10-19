@@ -82,7 +82,7 @@ export default function JoinGroup() {
       const data = await response.json();
 
       if (
-        response.status === 400 &&
+        response.status === 200 &&
         data.message.includes("already a member")
       ) {
         setIsAlreadyMember(true);
@@ -116,12 +116,12 @@ export default function JoinGroup() {
 
   if (!isAuthenticated) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="flex justify-center w-full px-4 py-12 mx-auto max-w-7xl sm:px-6 lg:px-8 flex-col items-center">
         <div
-          className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4"
+          className="max-w-lg p-4 border border-white border-dashed rounded-3xl"
           role="alert"
         >
-          <span className="block sm:inline">
+          <span className="block text-xs text-white sm:text-lg">
             Please connect your wallet to join the group. Redirecting to home
             page in {redirectCountdown} seconds...
           </span>
@@ -132,12 +132,12 @@ export default function JoinGroup() {
 
   if (isAlreadyMember) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="flex flex-col items-center h-full justify-center w-full px-4 py-12 mx-auto max-w-7xl sm:px-6 lg:px-8">
         <div
-          className="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4"
+          className="max-w-lg p-4 border border-white border-dashed rounded-3xl"
           role="alert"
         >
-          <span className="block sm:inline">
+          <span className="block text-xs text-white sm:text-lg">
             You are already a member of this group. Redirecting to the group
             page in {redirectCountdown} seconds...
           </span>
@@ -147,11 +147,10 @@ export default function JoinGroup() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <h1 className="text-3xl font-bold mb-6">Join Group</h1>
+    <div className="flex flex-col items-center px-4 py-12 mx-auto max-w-7xl sm:px-6 lg:px-8 h-full justify-center">
       {error && (
         <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
+          className="max-w-lg p-4 border border-white border-dashed rounded-3xl text-white mb-4"
           role="alert"
         >
           <span className="block sm:inline">{error}</span>
@@ -164,7 +163,7 @@ export default function JoinGroup() {
       ) : (
         <button
           onClick={joinGroup}
-          className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded"
+          className="bg-primary-pink hover:bg-primary-pink/90 duration-300 rounded-3xl justify-center items-center gap-3.5 inline-flex w-full max-w-md md:max-w-lg py-5 text-white"
           disabled={!inviteLink || !publicKey}
         >
           Join Group

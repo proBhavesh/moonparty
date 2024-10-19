@@ -59,9 +59,10 @@ export default async function handler(req, res) {
 
     if (existingMember) {
       console.log("User is already a member of this group");
-      return res.status(400).json({
+      return res.status(200).json({
         message: "User is already a member of this group",
         groupId: groupData.id,
+        member: existingMember,
       });
     }
 
