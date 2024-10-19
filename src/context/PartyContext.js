@@ -16,14 +16,26 @@ export const PartyProvider = ({ children }) => {
     }
   }, [isAuthenticated, user]);
 
-  const fetchUserParties = async (walletAddress) => {
+  const fetchUserParties = async (walletAddress, groupId = null) => {
     try {
       const response = await fetch(`/api/dashboard/${walletAddress}`);
       const data = await response.json();
       setUserParties(data);
-      if (data.length > 0 && !selectedParty) {
-        setSelectedParty(data[0]);
-        router.push(`/group/${data[0].id}`);
+
+      if (data.length > 0) {
+        let partyToSelect;
+        if (groupId) {
+          partyToSelect = data.find(
+            (party) => party.id.toString() === groupId.toString()
+          );
+        }
+        if (!partyToSelect) {
+          partyToSelect = data[0];
+        }
+        setSelectedParty(partyToSelect);
+        if (!router.pathname.startsWith("/group/")) {
+          router.push(`/group/${partyToSelect.id}`);
+        }
       }
     } catch (error) {
       console.error("Error fetching user parties:", error);
@@ -36,7 +48,9 @@ export const PartyProvider = ({ children }) => {
   };
 
   return (
-    <PartyContext.Provider value={{ selectedParty, userParties, selectParty }}>
+    <PartyContext.Provider
+      value={{ selectedParty, userParties, selectParty, fetchUserParties }}
+    >
       {children}
     </PartyContext.Provider>
   );

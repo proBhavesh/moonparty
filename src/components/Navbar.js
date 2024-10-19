@@ -11,15 +11,34 @@ import Loader from "./ui/Loader";
 const Navbar = () => {
   const router = useRouter();
   const { user, isLoading, isAuthenticated, publicKey } = useWalletConnection();
-  const { selectedParty, userParties, selectParty } = useParty();
+  const { selectedParty, userParties, selectParty, fetchUserParties } =
+    useParty();
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showPartySwitcher, setShowPartySwitcher] = useState(false);
 
   useEffect(() => {
     if (publicKey && !isAuthenticated && !isLoading) {
       router.push("/");
+    } else if (isAuthenticated && !selectedParty && userParties.length > 0) {
+      const match = router.pathname.match(/^\/group\/(\d+)$/);
+      if (match) {
+        const groupId = match[1];
+        fetchUserParties(user.wallet_address, groupId);
+      } else {
+        selectParty(userParties[0]);
+      }
     }
-  }, [isAuthenticated, publicKey, isLoading, router]);
+  }, [
+    isAuthenticated,
+    publicKey,
+    isLoading,
+    router,
+    selectedParty,
+    userParties,
+    selectParty,
+    fetchUserParties,
+    user,
+  ]);
 
   const toggleUserProfile = () => {
     setShowUserProfile(!showUserProfile);
